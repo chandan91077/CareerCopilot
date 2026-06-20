@@ -1,0 +1,18 @@
+# Build phase
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY server/package*.json ./server/
+COPY shared/ ./shared/
+WORKDIR /app/server
+RUN npm install
+COPY server/ ./
+RUN npm run build
+
+# Execution phase
+FROM node:20-alpine
+WORKDIR /app
+COPY server/package*.json ./
+RUN npm install --only=production
+COPY --from=builder /app/server/dist ./dist
+EXPOSE 5000
+CMD ["node", "dist/server.js"]
