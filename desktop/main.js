@@ -80,7 +80,7 @@ function createWindow() {
     backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
-    type: 'toolbar',
+    skipTaskbar: false,
     title: "CareerCopilot Assistant Overlay",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -91,7 +91,7 @@ function createWindow() {
     show: false
   });
 
-  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity / WDA_EXCLUDEFROMCAPTURE)
+  // Exclude overlay from screen shares/recordings on Windows (SetWindowDisplayAffinity)
   mainWindow.setContentProtection(true);
 
   // Load React router
