@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Camera, Mic, MicOff, ChevronLeft, ChevronRight,
-  Send, Loader2, EyeOff, Sun, X, Code2
+  Send, Loader2, EyeOff, Sun, X, Code2, User
 } from 'lucide-react';
 
 // ─── Glass styles ──────────────────────────────────────────────────
@@ -12,8 +12,52 @@ const G: React.CSSProperties = {
   border: '1px solid rgba(55,55,65,0.55)',
 };
 
+// ─── Resume data from uploaded CV ─────────────────────────────────
+interface ResumeData {
+  parsedText: string;
+  summary: string;
+  skills: string[];
+  originalName: string;
+}
+
+// Extract candidate name from raw resume text (first capitalized name-like line)
+function extractName(text: string): string {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  for (const line of lines.slice(0, 5)) {
+    // Looks like a name: 2-4 words, each capitalized, no numbers
+    if (/^[A-Z][a-z]+(\s[A-Z][a-z]+){1,3}$/.test(line)) return line;
+  }
+  return 'the candidate';
+}
+
+// Extract years of experience (e.g. "3 years", "2+ years")
+function extractYears(text: string): string {
+  const m = text.match(/(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:experience|exp)/i);
+  return m ? `${m[1]}+ years` : '';
+}
+
+// Extract current/latest job title
+function extractTitle(text: string): string {
+  const patterns = [
+    /(?:current|present|currently)\s+(?:role|position|working as)?[:\s]+([A-Z][\w\s]+)/i,
+    /(?:Software|Frontend|Backend|Full.?Stack|Senior|Lead|Junior)\s+(?:Engineer|Developer|Architect|Analyst|Intern)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[0].trim();
+  }
+  return 'Software Professional';
+}
+
+// Extract company names
+function extractCompanies(text: string): string[] {
+  const found: string[] = [];
+  const m = text.match(/(?:at|@|worked\s+at|employed\s+at|formerly\s+at)\s+([A-Z][\w\s&.]+?)(?:\s*[,.|\n]|$)/gi);
+  if (m) m.slice(0, 2).forEach(x => { const c = x.replace(/^(at|@|worked at|employed at|formerly at)\s+/i,'').trim(); if(c) found.push(c); });
+  return found;
+}
+
 // ─── Instant keyword detection ─────────────────────────────────────
-// Returns true as soon as a question keyword is found in INTERIM text
 function hasQuestionSignal(text: string): boolean {
   const t = text.toLowerCase();
   const triggers = [
@@ -28,8 +72,8 @@ function hasQuestionSignal(text: string): boolean {
   return triggers.some(k => t.includes(k));
 }
 
-// ─── Short, precise AI answer engine ──────────────────────────────
-function getAnswer(question: string): { text: string; code?: string } {
+// ─── Resume-aware answer engine ───────────────────────────────────
+function getAnswer(question: string, resume?: ResumeData | null): { text: string; code?: string } {
   const q = question.toLowerCase();
 
   // ── CODE QUESTIONS (show code first) ───────────────────────────
@@ -111,24 +155,54 @@ function reverseList(head) {
     };
   }
 
-  // ── INTERVIEW QUESTIONS ─────────────────────────────────────────
+  // ── HR/INTRO QUESTIONS (use resume for personalized answers) ────
   if (q.includes('tell me about yourself') || q.includes('introduce')) {
+    if (resume?.parsedText) {
+      const name = extractName(resume.parsedText);
+      const title = extractTitle(resume.parsedText);
+      const years = extractYears(resume.parsedText);
+      const companies = extractCompanies(resume.parsedText);
+      const topSkills = (resume.skills || []).slice(0, 4).join(', ');
+      const co = companies.length > 0 ? ` at ${companies[0]}` : '';
+      return {
+        text: `Say this:\n"I'm ${name}, a ${title}${years ? ` with ${years} of experience` : ''}${co}. My core skills are ${topSkills || 'software development'}. ${resume.summary ? resume.summary.split('.')[0] + '.' : ''} I'm excited about this role because it aligns perfectly with my background in ${topSkills.split(',')[0] || 'tech'}."
+
+📌 Keep it under 90 seconds. End with why THIS role.`
+      };
+    }
     return { text: '• Current role + years of experience\n• 2 key achievements with numbers\n• Why excited about THIS role\n• Keep under 90 seconds' };
   }
+
   if (q.includes('strength')) {
-    return { text: '• Pick ONE specific strength\n• Back it with a real example\n• "At [company] I [action] → [result]"\n• Avoid: hardworking, team player (too generic)' };
+    if (resume?.skills?.length) {
+      const topSkill = resume.skills[0];
+      return { text: `• Your top strength from CV: "${topSkill}"\n• Say: "My core strength is ${topSkill}. At [company] I used it to [specific result]"\n• Quantify: "reduced X by Y%" or "shipped Z feature"\n• Keep it to one strength, backed by evidence` };
+    }
+    return { text: '• Pick ONE specific strength backed by a real example\n• "At [company] I [action] → [result]"\n• Quantify the result (%, time, users)\n• Avoid: hardworking, team player (too generic)' };
   }
+
   if (q.includes('weakness')) {
-    return { text: '• Pick a REAL weakness you\'ve improved\n• "I struggled with X, so I did Y, now Z"\n• Shows self-awareness + growth mindset\n• Never: "I work too hard"' };
+    return { text: '• Pick a REAL weakness you\'ve improved\n• "I struggled with X, so I did Y, now Z"\n• Shows self-awareness + growth mindset\n• Never say: "I work too hard"' };
   }
+
   if (q.includes('why this') || q.includes('why us') || q.includes('why do you want')) {
+    if (resume?.skills?.length) {
+      const skill = resume.skills[0];
+      return { text: `• Connect your ${skill} expertise to their tech stack\n• Mention their specific product/mission you admire\n• "This role lets me grow in [skill] while contributing to [company mission]"\n• Be specific — not generic praise` };
+    }
     return { text: '• Mention their specific product/mission\n• Name a team or project that excites you\n• "This role aligns with my goal of X"\n• Be specific — not generic praise' };
   }
+
   if (q.includes('5 years') || q.includes('where do you see')) {
+    if (resume?.parsedText) {
+      const title = extractTitle(resume.parsedText);
+      return { text: `• "In 5 years, I see myself as a Senior ${title} or Tech Lead"\n• Mention mastering ${(resume.skills||[]).slice(0,2).join(' and ')||'your domain'}\n• Connect to this company\'s growth trajectory\n• Show ambition that serves THEM, not just you` };
+    }
     return { text: '• "Senior/Lead [role] in this domain"\n• Mention specific skills you want to build\n• Connect to this company\'s growth\n• Show ambition + alignment' };
   }
+
   if (q.includes('salary') || q.includes('compensation') || q.includes('expect')) {
-    return { text: '• Research Glassdoor/Levels.fyi first\n• Give a range (anchor 10% high)\n• "Based on market + my experience: ₹X–Y"\n• "Open to discuss full package"' };
+    return { text: '• Research Glassdoor/Levels.fyi for the role first\n• Give a range (anchor 10–15% high)\n• "Based on my experience and market data: ₹X–Y LPA"\n• "Open to discuss the full package including equity/benefits"' };
   }
   if (q.includes('conflict') || q.includes('disagree')) {
     return { text: '• Situation: describe the disagreement briefly\n• Action: focused on facts, not emotions\n• Listen first, then present data\n• Result: compromise or escalated gracefully' };
@@ -185,15 +259,37 @@ export default function AssistantOverlay() {
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState('');
   const [liveText, setLiveText] = useState('');
+  const [resume, setResume] = useState<ResumeData | null>(null);
+  const [resumeStatus, setResumeStatus] = useState<'loading'|'loaded'|'none'>('loading');
 
-  // Screen capture mode: null = not captured, string = captured b64
+  // Screen capture mode
   const [capturedScreen, setCapturedScreen] = useState<string | null>(null);
   const [screenInput, setScreenInput] = useState('');
 
   const recRef = useRef<any>(null);
-  const answeredRef = useRef<Set<string>>(new Set()); // prevent duplicate answers
+  const answeredRef = useRef<Set<string>>(new Set());
   const listeningRef = useRef(false);
   listeningRef.current = isListening;
+
+  // ── Fetch user's CV from server ─────────────────────────────
+  const fetchResume = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) { setResumeStatus('none'); return; }
+      const res = await fetch('/api/resume/latest', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResume(data);
+        setResumeStatus('loaded');
+      } else {
+        setResumeStatus('none');
+      }
+    } catch {
+      setResumeStatus('none');
+    }
+  }, []);
 
   // ── Push answer ─────────────────────────────────────────────
   const pushQA = useCallback((qa: QA) => {
@@ -205,7 +301,10 @@ export default function AssistantOverlay() {
     setLoading(false);
   }, []);
 
-  // ── Instant answer: no waiting ──────────────────────────────
+  // ── Instant answer (uses resume for personalization) ────────────
+  const resumeRef = useRef<ResumeData | null>(null);
+  resumeRef.current = resume;
+
   const answerNow = useCallback((question: string) => {
     const key = question.trim().slice(0, 40).toLowerCase();
     if (answeredRef.current.has(key)) return;
@@ -213,8 +312,8 @@ export default function AssistantOverlay() {
 
     setLoading(true);
     setLiveText('');
-    // Answer instantly (no API call, no delay)
-    const { text, code } = getAnswer(question);
+    // Instantly generate answer using resume data if available
+    const { text, code } = getAnswer(question, resumeRef.current);
     pushQA({ question, text, code });
   }, [pushQA]);
 
@@ -320,6 +419,9 @@ export default function AssistantOverlay() {
 
   // ── Init ────────────────────────────────────────────────────
   useEffect(() => {
+    // Fetch user CV immediately for personalized answers
+    fetchResume();
+
     const eAPI = (window as any).electronAPI;
     if (eAPI) {
       eAPI.onScreenCapture?.((b64: string) => handleCapture(b64));
@@ -350,6 +452,17 @@ export default function AssistantOverlay() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 999, background: 'rgba(239,68,68,.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,.25)', fontSize: 9, fontWeight: 700 }}>
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: isListening ? '#ef4444' : '#52525b', transition: 'background .3s' }} />
             {isListening ? 'LISTENING' : 'LIVE'}
+          </span>
+          {/* CV status pill */}
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px',
+            borderRadius: 999, fontSize: 9, fontWeight: 700,
+            background: resumeStatus === 'loaded' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)',
+            color: resumeStatus === 'loaded' ? '#6ee7b7' : '#fbbf24',
+            border: `1px solid ${resumeStatus === 'loaded' ? 'rgba(52,211,153,.25)' : 'rgba(251,191,36,.2)'}`,
+          }}>
+            <User size={8} />
+            {resumeStatus === 'loading' ? 'CV...' : resumeStatus === 'loaded' ? `CV: ${extractName(resume?.parsedText || '')}` : 'No CV'}
           </span>
           <button
             onClick={() => {
