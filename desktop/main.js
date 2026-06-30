@@ -1,9 +1,61 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer } = require('electron');
 const path = require('path');
-const isDev = !app.isPackaged;
+const http = require('http');
+const fs = require('fs');
 
+const isDev = !app.isPackaged;
 let mainWindow;
 let tray;
+let localPort;
+let localServer;
+
+const mime = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2'
+};
+
+// Local static files server to support React Router HTML5 BrowserRouter
+function startLocalServer(callback) {
+  localServer = http.createServer((req, res) => {
+    let reqUrl = req.url.split('?')[0];
+    const hasExtension = path.extname(reqUrl) !== '';
+    let filePath = hasExtension 
+      ? path.join(__dirname, '../client/dist', reqUrl) 
+      : path.join(__dirname, '../client/dist/index.html');
+      
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        fs.readFile(path.join(__dirname, '../client/dist/index.html'), (err2, content2) => {
+          if (err2) {
+            res.writeHead(404);
+            res.end("Not Found");
+          } else {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(content2);
+          }
+        });
+      } else {
+        const ext = path.extname(filePath);
+        res.writeHead(200, { 'Content-Type': mime[ext] || 'application/octet-stream' });
+        res.end(content);
+      }
+    });
+  });
+  
+  localServer.listen(0, '127.0.0.1', () => {
+    localPort = localServer.address().port;
+    console.log('[SERVER] Packaged static assets serving on port:', localPort);
+    callback(localPort);
+  });
+}
 
 async function captureActiveScreenBase64() {
   const sources = await desktopCapturer.getSources({
@@ -12,7 +64,6 @@ async function captureActiveScreenBase64() {
   });
 
   if (sources.length > 0) {
-    // Return primary screen capture
     return sources[0].thumbnail.toPNG().toString('base64');
   }
   throw new Error("No active screen captures found.");
@@ -39,7 +90,7 @@ function createWindow() {
   // Load React router
   const startUrl = isDev 
     ? 'http://localhost:5173/assistant' 
-    : `file://${path.join(__dirname, '../client/dist/index.html')}`; // Fallback index loads landing or route
+    : `http://127.0.0.1:${localPort}/assistant`;
 
   mainWindow.loadURL(startUrl);
 
@@ -52,10 +103,7 @@ function createWindow() {
   });
 }
 
-// App Ready Event
-app.whenReady().then(() => {
-  createWindow();
-
+function registerShortcuts() {
   // 1. Toggles Assistant Visibility (Ctrl + /)
   globalShortcut.register('CommandOrControl+/', () => {
     if (!mainWindow) return;
@@ -73,7 +121,6 @@ app.whenReady().then(() => {
       const base64Image = await captureActiveScreenBase64();
       mainWindow.webContents.send('screen-captured', base64Image);
       
-      // Make sure the window is visible to show loaders
       if (!mainWindow.isVisible()) {
         mainWindow.show();
       }
@@ -115,6 +162,35 @@ app.whenReady().then(() => {
     const [x, y] = mainWindow.getPosition();
     mainWindow.setPosition(x + 40, y);
   });
+}
+
+app.whenReady().then(() => {
+  const initApp = () => {
+    createWindow();
+    registerShortcuts();
+    
+    // Create System Tray
+    try {
+      const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+      tray = new Tray(iconPath);
+      const contextMenu = Menu.buildFromTemplate([
+        { label: 'Show Assistant', click: () => { if (mainWindow) mainWindow.show(); else createWindow(); } },
+        { label: 'Quit', click: () => app.quit() }
+      ]);
+      tray.setToolTip('CareerCopilot Assistant Active');
+      tray.setContextMenu(contextMenu);
+    } catch (err) {
+      console.log("No tray icon setup. Skipping.");
+    }
+  };
+
+  if (isDev) {
+    initApp();
+  } else {
+    startLocalServer(() => {
+      initApp();
+    });
+  }
 
   // Register local IPC handlers
   ipcMain.handle('hide-overlay', () => {
@@ -128,28 +204,15 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('sync-history-state', (event, state) => {
-    // Synchronize current history details for tray info
     console.log('[IPC] Synced history index:', state.currentIndex);
   });
-
-  // Create System Tray
-  try {
-    const iconPath = path.join(__dirname, 'assets', 'icon.ico');
-    tray = new Tray(iconPath);
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'Show Assistant', click: () => { if (mainWindow) mainWindow.show(); else createWindow(); } },
-      { label: 'Quit', click: () => app.quit() }
-    ]);
-    tray.setToolTip('CareerCopilot Assistant Active');
-    tray.setContextMenu(contextMenu);
-  } catch (err) {
-    console.log("No tray icon setup. Skipping.");
-  }
 });
 
 app.on('will-quit', () => {
-  // Unregister all global shortcuts
   globalShortcut.unregisterAll();
+  if (localServer) {
+    localServer.close();
+  }
 });
 
 app.on('window-all-closed', () => {
