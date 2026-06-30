@@ -29,6 +29,7 @@
   @apply bg-slate-300 dark:bg-dark-700 rounded-full hover:bg-slate-400 dark:hover:bg-dark-600;
 }
 
-body.electron-body, body.electron-body #root {
+html.electron-app, html.electron-app body, html.electron-app #root {
   background: transparent !important;
+  background-color: transparent !important;
 }

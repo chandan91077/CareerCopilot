@@ -87,6 +87,9 @@ function createWindow() {
     show: false
   });
 
+  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity)
+  mainWindow.setContentProtection(true);
+
   // Load React router
   const startUrl = isDev 
     ? 'http://localhost:5173/assistant' 
