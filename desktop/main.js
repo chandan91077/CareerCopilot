@@ -20,10 +20,10 @@ async function captureActiveScreenBase64() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 380,
-    height: 600,
-    minWidth: 320,
-    minHeight: 500,
+    width: 800,
+    height: 250,
+    minWidth: 500,
+    minHeight: 180,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -119,6 +119,12 @@ app.whenReady().then(() => {
   // Register local IPC handlers
   ipcMain.handle('hide-overlay', () => {
     if (mainWindow) mainWindow.hide();
+  });
+
+  ipcMain.handle('set-opacity', (event, opacity) => {
+    if (mainWindow) {
+      mainWindow.setOpacity(parseFloat(opacity));
+    }
   });
 
   ipcMain.handle('sync-history-state', (event, state) => {
