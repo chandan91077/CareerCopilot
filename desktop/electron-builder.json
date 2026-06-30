@@ -9,7 +9,11 @@
     "preload.js",
     "package.json",
     "assets/**/*",
-    "../client/dist/**/*"
+    {
+      "from": "../client/dist",
+      "to": "dist",
+      "filter": ["**/*"]
+    }
   ],
   "win": {
     "target": "nsis",

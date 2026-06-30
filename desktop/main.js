@@ -28,12 +28,12 @@ function startLocalServer(callback) {
     let reqUrl = req.url.split('?')[0];
     const hasExtension = path.extname(reqUrl) !== '';
     let filePath = hasExtension 
-      ? path.join(__dirname, '../client/dist', reqUrl) 
-      : path.join(__dirname, '../client/dist/index.html');
+      ? path.join(__dirname, 'dist', reqUrl) 
+      : path.join(__dirname, 'dist/index.html');
       
     fs.readFile(filePath, (err, content) => {
       if (err) {
-        fs.readFile(path.join(__dirname, '../client/dist/index.html'), (err2, content2) => {
+        fs.readFile(path.join(__dirname, 'dist/index.html'), (err2, content2) => {
           if (err2) {
             res.writeHead(404);
             res.end("Not Found");
