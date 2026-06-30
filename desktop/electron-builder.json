@@ -1,0 +1,27 @@
+{
+  "appId": "com.prepai.desktop",
+  "productName": "PrepAI",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "package.json",
+    "assets/**/*",
+    "../client/dist/**/*"
+  ],
+  "win": {
+    "target": "nsis",
+    "icon": "assets/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "PrepAI",
+    "artifactName": "InterviewAISetup.exe",
+    "uninstallDisplayName": "PrepAI Uninstaller"
+  }
+}

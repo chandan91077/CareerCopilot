@@ -1,0 +1,17 @@
+{
+  "name": "ai-interview-platform-desktop",
+  "version": "1.0.0",
+  "description": "Electron desktop shell wrapper for PrepAI",
+  "main": "main.js",
+  "scripts": {
+    "electron": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1"
+  },
+  "devDependencies": {
+    "electron": "^29.2.0",
+    "electron-builder": "^24.13.3"
+  }
+}
