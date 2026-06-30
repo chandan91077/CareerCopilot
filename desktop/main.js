@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer, screen } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+const isDev = !app.isPackaged;
 
 let mainWindow;
 let tray;
