@@ -28,7 +28,7 @@ export default function MockInterview() {
   const [isRecording, setIsRecording] = useState(false);
   const [chatHistory, setChatHistory] = useState<Array<{ role: 'ai' | 'user'; content: string; eval?: any }>>([]);
   const [timer, setTimer] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<any>(null);
 
   // Recognition state
   const recognitionRef = useRef<any>(null);
