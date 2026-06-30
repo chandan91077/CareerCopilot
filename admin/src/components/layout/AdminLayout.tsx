@@ -34,10 +34,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       ? 'http://localhost:5173'
       : window.location.origin.replace('-admin', ''));
 
+  const [unauthorized, setUnauthorized] = useState(false);
+
   useEffect(() => {
     // Basic protection check
     if (!user || user.role !== 'admin') {
-      window.location.href = `${mainAppUrl}/login`;
+      const resolvedMainUrl = mainAppUrl.replace(/\/$/, '').toLowerCase();
+      const currentOrigin = window.location.origin.replace(/\/$/, '').toLowerCase();
+      
+      if (resolvedMainUrl !== currentOrigin) {
+        window.location.href = `${mainAppUrl}/login`;
+      } else {
+        setUnauthorized(true);
+      }
     }
   }, [user, mainAppUrl]);
 
@@ -56,6 +65,28 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Manage Users', path: '/users', icon: Users },
     { name: 'Configure Prompts', path: '/prompts', icon: Sliders },
   ];
+
+  if (unauthorized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-dark-950 p-6 transition-colors">
+        <div className="max-w-md w-full bg-white dark:bg-dark-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-8 shadow-xl text-center">
+          <div className="w-16 h-16 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/25">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            You must be logged in as an administrator on the main application to view the system dashboard.
+          </p>
+          <a
+            href={`${mainAppUrl}/login`}
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white font-bold text-sm shadow-lg shadow-rose-500/20 hover:opacity-90 transition-opacity w-full"
+          >
+            Go to Candidate Login
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-dark-950 transition-colors duration-200">
