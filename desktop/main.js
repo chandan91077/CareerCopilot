@@ -192,7 +192,27 @@ app.whenReady().then(() => {
     });
   }
 
+  // Auto-allow media and audio permission checks
+  const { session } = require('electron');
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'audio' || permission === 'media') return true;
+    return false;
+  });
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'audio' || permission === 'media') callback(true);
+    else callback(false);
+  });
+
   // Register local IPC handlers
+  ipcMain.on('trigger-screen-capture', async () => {
+    try {
+      const base64Image = await captureActiveScreenBase64();
+      if (mainWindow) mainWindow.webContents.send('screen-captured', base64Image);
+    } catch (err) {
+      console.error("Screen capture IPC trigger failed:", err);
+    }
+  });
+
   ipcMain.handle('hide-overlay', () => {
     if (mainWindow) mainWindow.hide();
   });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { 
   Sparkles, Camera, Mic, History, Settings, HelpCircle, X,
@@ -18,7 +18,16 @@ export default function AssistantOverlay() {
   const [error, setError] = useState('');
   const [opacity, setOpacity] = useState(1.0);
   const [inputVal, setInputVal] = useState('');
-  const [micActive, setMicActive] = useState(true);
+  
+  // Voice transcription states
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
+  const isListeningRef = useRef(false);
+
+  // Sync ref to prevent closure capture issues
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
 
   // Handle new screen capture base64 payload from Electron
   const handleAnalyzeScreen = async (base64Image: string) => {
@@ -45,8 +54,8 @@ export default function AssistantOverlay() {
   };
 
   // Handle custom prompt execution
-  const handleCustomPrompt = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCustomPrompt = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!inputVal.trim() || loading) return;
     setLoading(true);
     setError('');
@@ -54,7 +63,6 @@ export default function AssistantOverlay() {
     setInputVal('');
 
     try {
-      // Simulate/call custom question analysis
       const userResume = await api.get('/resume/latest').catch(() => ({ data: null }));
       const resumeText = userResume.data?.parsedText || '[No resume uploaded]';
       
@@ -96,7 +104,55 @@ export default function AssistantOverlay() {
     }
   };
 
+  // Initialize Speech Recognition
   useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        const activeText = finalTranscript || interimTranscript;
+        if (activeText.trim()) {
+          setInputVal(activeText);
+        }
+      };
+
+      rec.onend = () => {
+        // Auto-restart if microphone is toggled active
+        if (isListeningRef.current) {
+          try {
+            rec.start();
+          } catch (e) {
+            console.log('Error auto-starting speech recognition:', e);
+          }
+        }
+      };
+
+      rec.onerror = (err: any) => {
+        console.log('Speech recognition error:', err);
+      };
+
+      setRecognition(rec);
+    } else {
+      console.log('Speech recognition is not supported in this browser environment.');
+    }
+
+    // Bind Electron IPC callbacks
     const electronAPI = (window as any).electronAPI;
     if (electronAPI) {
       electronAPI.onScreenCapture((base64Image: string) => {
@@ -115,12 +171,32 @@ export default function AssistantOverlay() {
     setHistory([
       {
         questionDetected: "Active Practice Companion Initialized",
-        hint: "Welcome to PrepAI real-time mock interview overlay. Adjust opacity with the slider on the right. Press Ctrl + Enter to capture the screen, or ask custom questions below.",
+        hint: "Welcome to PrepAI real-time mock interview overlay. Adjust opacity with the slider on the right. Press Ctrl + Enter or click 'Analysis' to capture the screen. Click the Microphone icon to listen to speech.",
         codeSnippet: ""
       }
     ]);
     setCurrentIndex(0);
   }, []);
+
+  // Handle Speech Recognition toggle
+  const toggleListening = () => {
+    if (!recognition) {
+      alert('Speech Recognition is not supported on this platform/device.');
+      return;
+    }
+
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognition.start();
+        setIsListening(true);
+      } catch (err) {
+        console.log('Failed to start speech recognition:', err);
+      }
+    }
+  };
 
   const activeResult = history[currentIndex] || null;
 
@@ -144,19 +220,15 @@ export default function AssistantOverlay() {
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> LIVE
           </span>
           <button 
-            onClick={async () => {
-              // Trigger a manual screenshot analysis
+            onClick={() => {
               const electronAPI = (window as any).electronAPI;
-              if (electronAPI) {
-                // We ask main process to send back a screenshot event
-                // In main.js we handle screenshot capture and send 'screen-captured'
-                const mockCapture = await api.post('/assistant/analyze-screen', { image: 'mock' }).catch(() => null);
-                if (mockCapture) handleAnalyzeScreen('mock');
+              if (electronAPI?.triggerScreenCapture) {
+                electronAPI.triggerScreenCapture();
               } else {
                 handleAnalyzeScreen(''); // mock run in browser
               }
             }}
-            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500 hover:text-white transition-all text-[9px] font-bold cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-50 hover:text-white transition-all text-[9px] font-bold cursor-pointer"
           >
             <Camera className="w-3 h-3" /> Analysis
           </button>
@@ -165,9 +237,13 @@ export default function AssistantOverlay() {
         {/* Right Section Action Icons */}
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
           <button 
-            onClick={() => setMicActive(!micActive)}
-            className={`p-1.5 rounded-lg hover:bg-zinc-900 transition-colors cursor-pointer ${micActive ? 'text-zinc-400' : 'text-rose-500 bg-rose-500/10'}`}
-            title="Toggle Mic"
+            onClick={toggleListening}
+            className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer ${
+              isListening 
+                ? 'text-rose-400 bg-rose-500/15 border border-rose-500/20 animate-pulse' 
+                : 'text-zinc-400 hover:bg-zinc-900 border border-transparent'
+            }`}
+            title={isListening ? 'Speech Recognition Listening...' : 'Start Speech Recognition'}
           >
             <Mic className="w-3.5 h-3.5" />
           </button>
@@ -211,7 +287,7 @@ export default function AssistantOverlay() {
           {loading ? (
             <div className="text-center py-6 space-y-2">
               <Loader2 className="w-6 h-6 animate-spin text-indigo-500 mx-auto" />
-              <p className="text-[10px] font-semibold text-zinc-400">Analyzing primary display screenshot...</p>
+              <p className="text-[10px] font-semibold text-zinc-400">Processing real-time input analysis...</p>
             </div>
           ) : error ? (
             <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] flex items-start gap-1.5">
@@ -289,8 +365,8 @@ export default function AssistantOverlay() {
             type="text"
             value={inputVal}
             onChange={e => setInputVal(e.target.value)}
-            placeholder="How can I help you today?"
-            className="w-full px-4 py-1.5 bg-zinc-900/60 border border-zinc-800/80 rounded-full text-xs text-slate-100 placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/25 outline-none transition-all pr-8"
+            placeholder={isListening ? "Listening to speech... Speak now" : "How can I help you today?"}
+            className="w-full px-4 py-1.5 bg-zinc-900/60 border border-zinc-800/80 rounded-full text-xs text-slate-100 placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/25 outline-none transition-all pr-8 animate-none"
           />
           <button
             type="submit"

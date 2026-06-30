@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Helper Controls
   hideOverlayWindow: () => ipcRenderer.invoke('hide-overlay'),
   syncHistoryState: (state) => ipcRenderer.invoke('sync-history-state', state),
-  setWindowOpacity: (opacity) => ipcRenderer.invoke('set-opacity', opacity)
+  setWindowOpacity: (opacity) => ipcRenderer.invoke('set-opacity', opacity),
+  triggerScreenCapture: () => ipcRenderer.send('trigger-screen-capture')
 });
