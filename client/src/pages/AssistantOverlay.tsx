@@ -188,7 +188,7 @@ export default function AssistantOverlay() {
             className="flex items-center text-[10px] text-zinc-500 hover:text-zinc-300 font-bold bg-zinc-900/60 px-2 py-0.5 border border-zinc-800 rounded transition-all cursor-pointer gap-1"
             title="Hide window"
           >
-            <EyeOff className="w-3 h-3" /> Hide Ctrl + \
+            <EyeOff className="w-3 h-3" /> Hide Ctrl + /
           </button>
           <button 
             onClick={() => {

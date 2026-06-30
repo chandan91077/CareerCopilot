@@ -56,8 +56,8 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // 1. Toggles Assistant Visibility (Ctrl + \)
-  globalShortcut.register('CommandOrControl+\\', () => {
+  // 1. Toggles Assistant Visibility (Ctrl + /)
+  globalShortcut.register('CommandOrControl+/', () => {
     if (!mainWindow) return;
     if (mainWindow.isVisible()) {
       mainWindow.hide();

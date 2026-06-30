@@ -117,7 +117,7 @@ export default function Dashboard() {
             <div>
               <p className="text-[11px] font-bold text-indigo-200 uppercase tracking-wider mb-2">Desktop Hotkeys</p>
               <ul className="text-xs text-indigo-150 space-y-1.5 list-disc pl-4">
-                <li><strong className="text-white">Ctrl + \</strong> - Toggle overlay visibility</li>
+                <li><strong className="text-white">Ctrl + /</strong> - Toggle overlay visibility</li>
                 <li><strong className="text-white">Ctrl + Enter</strong> - Capture and analyze screen</li>
                 <li><strong className="text-white">Ctrl + [ / ]</strong> - Prev / Next response in history</li>
                 <li><strong className="text-white">Ctrl + Arrow Keys</strong> - Move assistant overlay window</li>
