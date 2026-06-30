@@ -199,15 +199,15 @@ app.whenReady().then(() => {
     });
   }
 
-  // Auto-allow media and audio permission checks
+  // Auto-allow microphone, audio and media permissions for speech recognition
   const { session } = require('electron');
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'audio' || permission === 'media') return true;
-    return false;
+    if (['audio', 'media', 'microphone', 'mediaKeySystem'].includes(permission)) return true;
+    return true; // allow all permissions for overlay
   });
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'audio' || permission === 'media') callback(true);
-    else callback(false);
+    // Always allow mic/audio for speech recognition
+    callback(true);
   });
 
   // Register local IPC handlers
