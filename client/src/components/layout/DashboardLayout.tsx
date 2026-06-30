@@ -53,11 +53,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Resume AI', path: '/resume', icon: FileText },
-    { name: 'Mock Interview', path: '/interview', icon: Mic },
-    { name: 'Coding Practice', path: '/coding', icon: Code },
-    { name: 'Behavioral STAR', path: '/behavioral', icon: Heart },
-    { name: 'History Reports', path: '/history', icon: History },
     { name: 'Subscription', path: '/subscription', icon: CreditCard },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];

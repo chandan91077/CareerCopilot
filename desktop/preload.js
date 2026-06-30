@@ -1,7 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Secure context bridge bindings
 contextBridge.exposeInMainWorld('electronAPI', {
-  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  showNotification: (title, body) => ipcRenderer.invoke('show-notification', { title, body })
+  // Overlay Hotkey Listeners
+  onScreenCapture: (callback) => ipcRenderer.on('screen-captured', (event, base64Image) => callback(base64Image)),
+  onNavigatePrev: (callback) => ipcRenderer.on('navigate-prev', () => callback()),
+  onNavigateNext: (callback) => ipcRenderer.on('navigate-next', () => callback()),
+
+  // Helper Controls
+  hideOverlayWindow: () => ipcRenderer.invoke('hide-overlay'),
+  syncHistoryState: (state) => ipcRenderer.invoke('sync-history-state', state)
 });

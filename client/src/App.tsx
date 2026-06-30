@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 import Landing from './pages/Landing';
@@ -7,11 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
-import ResumeModule from './pages/ResumeModule';
-import MockInterview from './pages/MockInterview';
-import CodingPractice from './pages/CodingPractice';
-import BehavioralPractice from './pages/BehavioralPractice';
-import InterviewHistory from './pages/InterviewHistory';
+import AssistantOverlay from './pages/AssistantOverlay';
 import Subscription from './pages/Subscription';
 import Settings from './pages/Settings';
 
@@ -25,9 +21,27 @@ const PrivateRoute = ({ children }: PrivateRouteProps) => {
   return token ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
+const ElectronHandler = () => {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    const isElectron = !!(window as any).electronAPI;
+    if (isElectron) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        navigate('/assistant');
+      } else {
+        navigate('/login');
+      }
+    }
+  }, [navigate]);
+
+  return null;
+};
+
 export default function App() {
   return (
     <Router>
+      <ElectronHandler />
       <Routes>
         {/* Public Landing Page */}
         <Route path="/" element={<Landing />} />
@@ -49,52 +63,10 @@ export default function App() {
           }
         />
         <Route
-          path="/resume"
+          path="/assistant"
           element={
             <PrivateRoute>
-              <DashboardLayout>
-                <ResumeModule />
-              </DashboardLayout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/interview"
-          element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <MockInterview />
-              </DashboardLayout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/coding"
-          element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <CodingPractice />
-              </DashboardLayout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/behavioral"
-          element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <BehavioralPractice />
-              </DashboardLayout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/history"
-          element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <InterviewHistory />
-              </DashboardLayout>
+              <AssistantOverlay />
             </PrivateRoute>
           }
         />

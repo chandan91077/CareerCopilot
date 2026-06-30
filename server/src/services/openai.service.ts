@@ -233,5 +233,53 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
+
+  static async analyzeScreen(base64Image: string, resumeText: string) {
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return {
+        questionDetected: "Simulated question: 'How do you design a high-availability backend cluster?'",
+        hint: "Be sure to mention stateless API servers, load balancing (Nginx/HAProxy), database replication (primary-replica), and standard fallback caching (Redis) matching your Node/Express experience.",
+        codeSnippet: "// Mock Javascript structural design\nconst cluster = require('cluster');\nif (cluster.isPrimary) { ... }"
+      };
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert real-time mock interview companion.
+Review the screen capture showing the technical question, slide, or code prompt.
+Identify the question/problem on screen.
+Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
+Output strictly as JSON in the following format:
+{
+  "questionDetected": "The technical question or problem detected...",
+  "hint": "Constructive hints and guidelines to speak or explain based on the user's resume...",
+  "codeSnippet": "Optional code block in correct language if it is a coding question, else empty string"
+}`
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Candidate's Resume:\n${resumeText}`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content || '{}');
+  }
 }
 export { DEFAULT_PROMPTS };

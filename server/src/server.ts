@@ -14,8 +14,7 @@ dotenv.config();
 import authRoutes from './routes/auth.routes';
 import profileRoutes from './routes/profile.routes';
 import resumeRoutes from './routes/resume.routes';
-import interviewRoutes from './routes/interview.routes';
-import codingRoutes from './routes/coding.routes';
+import assistantRoutes from './routes/assistant.routes';
 import paymentRoutes from './routes/payment.routes';
 import adminRoutes from './routes/admin.routes';
 
@@ -49,8 +48,7 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/resume', resumeRoutes);
-app.use('/api/interview', interviewRoutes);
-app.use('/api/coding', codingRoutes);
+app.use('/api/assistant', assistantRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
