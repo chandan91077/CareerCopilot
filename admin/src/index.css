@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.glass-panel {
+  @apply bg-white/70 dark:bg-dark-900/60 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/40;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-slate-100 dark:bg-dark-950;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-dark-700 rounded-full hover:bg-slate-400 dark:hover:bg-dark-600;
+}
