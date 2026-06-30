@@ -80,17 +80,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-        <Route
-          path="/settings"
-          element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <Settings />
-              </DashboardLayout>
-            </PrivateRoute>
-          }
-        />
-
         {/* Catch-all Redirect */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

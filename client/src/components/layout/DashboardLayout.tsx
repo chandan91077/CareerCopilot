@@ -54,7 +54,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Subscription', path: '/subscription', icon: CreditCard },
-    { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
   // If user is admin, add Admin link
