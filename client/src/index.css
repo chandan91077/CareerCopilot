@@ -28,3 +28,7 @@
 ::-webkit-scrollbar-thumb {
   @apply bg-slate-300 dark:bg-dark-700 rounded-full hover:bg-slate-400 dark:hover:bg-dark-600;
 }
+
+body.electron-body, body.electron-body #root {
+  background: transparent !important;
+}

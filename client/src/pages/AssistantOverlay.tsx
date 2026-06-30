@@ -201,11 +201,11 @@ export default function AssistantOverlay() {
   const activeResult = history[currentIndex] || null;
 
   return (
-    <div className="h-screen w-screen bg-zinc-950/90 text-slate-100 flex flex-col justify-between border border-zinc-800/80 rounded-2xl p-4 shadow-2xl overflow-hidden select-none font-sans" style={{ WebkitAppRegion: 'drag' } as any}>
+    <div className="h-screen w-screen bg-transparent text-slate-100 flex flex-col justify-between p-4 overflow-hidden select-none font-sans" style={{ WebkitAppRegion: 'drag' } as any}>
       
       {/* Top Header Bar (Draggable window region) */}
       <div 
-        className="flex items-center justify-between border-b border-zinc-800/50 pb-2 mb-2 select-none"
+        className="flex items-center justify-between bg-zinc-950/75 backdrop-blur-md border border-zinc-800/40 rounded-xl px-4 py-1.5 shadow-lg mb-1 select-none"
         style={{ WebkitAppRegion: 'drag' } as any}
       >
         {/* Left Section Logo & State Indicators */}
@@ -280,7 +280,7 @@ export default function AssistantOverlay() {
       </div>
 
       {/* Middle Content Section */}
-      <div className="flex-1 min-h-0 flex items-center justify-between gap-4 my-2 relative" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      <div className="flex-1 min-h-0 flex items-center justify-between gap-4 my-1 relative bg-zinc-950/70 backdrop-blur-md border border-zinc-800/30 rounded-xl p-4 shadow-lg" style={{ WebkitAppRegion: 'no-drag' } as any}>
         
         {/* Left Analysis hints / Text Area */}
         <div className="flex-1 h-full overflow-y-auto pr-2 scrollbar-none flex flex-col justify-center">
@@ -337,7 +337,7 @@ export default function AssistantOverlay() {
       </div>
 
       {/* Bottom Search & Navigation Area */}
-      <div className="border-t border-zinc-800/50 pt-2 flex items-center justify-between gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      <div className="bg-zinc-950/75 backdrop-blur-md border border-zinc-800/40 rounded-full px-4 py-1.5 shadow-lg flex items-center justify-between gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
         {/* Navigation Indicators */}
         <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-lg shrink-0">
           <button

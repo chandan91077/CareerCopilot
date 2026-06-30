@@ -26,6 +26,7 @@ const ElectronHandler = () => {
   React.useEffect(() => {
     const isElectron = !!(window as any).electronAPI;
     if (isElectron) {
+      document.body.classList.add('electron-body');
       const token = localStorage.getItem('token');
       if (token) {
         navigate('/assistant');
