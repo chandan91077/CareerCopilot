@@ -3,7 +3,7 @@ import vm from 'vm';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { OpenAIService } from '../services/openai.service';
 import { CodingSession } from '../models';
-import { SAMPLE_CODING_QUESTIONS } from '../../../shared/questions';
+import { SAMPLE_CODING_QUESTIONS } from '../shared/questions';
 
 const router = Router();
 

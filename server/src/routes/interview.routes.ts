@@ -86,7 +86,7 @@ router.post('/answer', authMiddleware, async (req: AuthRequest, res: Response) =
     // Evaluate answer via OpenAI
     const evaluation = await OpenAIService.evaluateAnswer(
       activeQuestion.question,
-      activeQuestion.userAnswer,
+      activeQuestion.userAnswer || '',
       interview.category
     );
 
