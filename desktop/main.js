@@ -72,22 +72,26 @@ async function captureActiveScreenBase64() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
-    height: 250,
+    height: 280,
     minWidth: 500,
     minHeight: 180,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     alwaysOnTop: true,
+    type: 'toolbar',
     title: "CareerCopilot Assistant Overlay",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     },
     show: false
   });
 
-  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity)
+  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity / WDA_EXCLUDEFROMCAPTURE)
   mainWindow.setContentProtection(true);
 
   // Load React router
