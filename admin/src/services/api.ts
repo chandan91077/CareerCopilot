@@ -27,7 +27,13 @@ api.interceptors.response.use(
       // Clear local records and redirect if unauthorized
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = 'http://localhost:5173/login';
+      
+      const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? 'http://localhost:5173'
+          : window.location.origin.replace('-admin', ''));
+          
+      window.location.href = `${mainAppUrl}/login`;
     }
     return Promise.reject(error);
   }

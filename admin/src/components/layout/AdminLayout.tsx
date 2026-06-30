@@ -29,12 +29,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const rawUser = localStorage.getItem('user');
   const user = rawUser ? JSON.parse(rawUser) : null;
 
+  const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:5173'
+      : window.location.origin.replace('-admin', ''));
+
   useEffect(() => {
     // Basic protection check
     if (!user || user.role !== 'admin') {
-      window.location.href = 'http://localhost:5173/login';
+      window.location.href = `${mainAppUrl}/login`;
     }
-  }, [user]);
+  }, [user, mainAppUrl]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -99,7 +104,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </div>
 
           <a
-            href="http://localhost:5173/dashboard"
+            href={`${mainAppUrl}/dashboard`}
             className="w-full flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-dark-800 text-slate-600 dark:text-slate-350 font-bold text-xs transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -163,7 +168,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
               <div className="pt-6 border-t border-slate-200 dark:border-slate-800/60">
                 <a
-                  href="http://localhost:5173/dashboard"
+                  href={`${mainAppUrl}/dashboard`}
                   className="w-full flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-250 text-slate-650 font-bold text-xs"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back to Candidate
