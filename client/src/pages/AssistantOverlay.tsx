@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Camera, Mic, MicOff, ChevronLeft, ChevronRight,
-  Send, Loader2, EyeOff, Sun, X, Code2, User
+  Send, Loader2, EyeOff, Sun, X, Code2, User, Volume2
 } from 'lucide-react';
 
 // ─── Glass styles ──────────────────────────────────────────────────
@@ -20,23 +20,19 @@ interface ResumeData {
   originalName: string;
 }
 
-// Extract candidate name from raw resume text (first capitalized name-like line)
 function extractName(text: string): string {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   for (const line of lines.slice(0, 5)) {
-    // Looks like a name: 2-4 words, each capitalized, no numbers
     if (/^[A-Z][a-z]+(\s[A-Z][a-z]+){1,3}$/.test(line)) return line;
   }
   return 'the candidate';
 }
 
-// Extract years of experience (e.g. "3 years", "2+ years")
 function extractYears(text: string): string {
   const m = text.match(/(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:experience|exp)/i);
   return m ? `${m[1]}+ years` : '';
 }
 
-// Extract current/latest job title
 function extractTitle(text: string): string {
   const patterns = [
     /(?:current|present|currently)\s+(?:role|position|working as)?[:\s]+([A-Z][\w\s]+)/i,
@@ -49,10 +45,9 @@ function extractTitle(text: string): string {
   return 'Software Professional';
 }
 
-// Extract company names
 function extractCompanies(text: string): string[] {
   const found: string[] = [];
-  const m = text.match(/(?:at|@|worked\s+at|employed\s+at|formerly\s+at)\s+([A-Z][\w\s&.]+?)(?:\s*[,.|\n]|$)/gi);
+  const m = text.match(/(?:at|@|worked\s+at|employed\s+at|formerly\s+at)\s+([A-Z][\w\s&.]+?)(?:\s*[,.|\\n]|$)/gi);
   if (m) m.slice(0, 2).forEach(x => { const c = x.replace(/^(at|@|worked at|employed at|formerly at)\s+/i,'').trim(); if(c) found.push(c); });
   return found;
 }
@@ -72,183 +67,11 @@ function hasQuestionSignal(text: string): boolean {
   return triggers.some(k => t.includes(k));
 }
 
-// ─── Resume-aware answer engine ───────────────────────────────────
-function getAnswer(question: string, resume?: ResumeData | null): { text: string; code?: string } {
-  const q = question.toLowerCase();
-
-  // ── CODE QUESTIONS (show code first) ───────────────────────────
-  if (q.includes('java') && (q.includes('code') || q.includes('write') || q.includes('implement') || q.includes('example'))) {
-    return {
-      text: 'Java example:',
-      code: `// Java OOP example
-public class Animal {
-    private String name;
-    
-    public Animal(String name) { this.name = name; }
-    
-    public String speak() { return name + " speaks"; }
-    
-    public static void main(String[] args) {
-        Animal a = new Animal("Dog");
-        System.out.println(a.speak()); // Dog speaks
-    }
-}`
-    };
-  }
-  if (q.includes('python') && (q.includes('code') || q.includes('write') || q.includes('implement'))) {
-    return {
-      text: 'Python example:',
-      code: `# Python example
-def fibonacci(n):
-    a, b = 0, 1
-    for _ in range(n):
-        yield a
-        a, b = b, a + b
-
-print(list(fibonacci(8)))  # [0,1,1,2,3,5,8,13]`
-    };
-  }
-  if (q.includes('react') && (q.includes('code') || q.includes('hook') || q.includes('usestate') || q.includes('component'))) {
-    return {
-      text: 'React hooks example:',
-      code: `// React useState + useEffect
-import { useState, useEffect } from 'react';
-
-function Counter() {
-  const [count, setCount] = useState(0);
-  
-  useEffect(() => {
-    document.title = \`Count: \${count}\`;
-  }, [count]);
-  
-  return <button onClick={() => setCount(c => c+1)}>{count}</button>;
-}`
-    };
-  }
-  if (q.includes('sql') || (q.includes('query') && q.includes('database'))) {
-    return {
-      text: 'SQL example:',
-      code: `-- Join + Group By example
-SELECT u.name, COUNT(o.id) as orders
-FROM users u
-LEFT JOIN orders o ON o.user_id = u.id
-WHERE u.active = 1
-GROUP BY u.id
-HAVING orders > 5
-ORDER BY orders DESC;`
-    };
-  }
-  if (q.includes('linked list') || q.includes('reverse') || q.includes('binary') || q.includes('sort')) {
-    return {
-      text: 'Algorithm example:',
-      code: `// Reverse a linked list (JavaScript)
-function reverseList(head) {
-  let prev = null, curr = head;
-  while (curr) {
-    let next = curr.next;
-    curr.next = prev;
-    prev = curr;
-    curr = next;
-  }
-  return prev; // new head
-} // O(n) time, O(1) space`
-    };
-  }
-
-  // ── HR/INTRO QUESTIONS (use resume for personalized answers) ────
-  if (q.includes('tell me about yourself') || q.includes('introduce')) {
-    if (resume?.parsedText) {
-      const name = extractName(resume.parsedText);
-      const title = extractTitle(resume.parsedText);
-      const years = extractYears(resume.parsedText);
-      const companies = extractCompanies(resume.parsedText);
-      const topSkills = (resume.skills || []).slice(0, 4).join(', ');
-      const co = companies.length > 0 ? ` at ${companies[0]}` : '';
-      return {
-        text: `Say this:\n"I'm ${name}, a ${title}${years ? ` with ${years} of experience` : ''}${co}. My core skills are ${topSkills || 'software development'}. ${resume.summary ? resume.summary.split('.')[0] + '.' : ''} I'm excited about this role because it aligns perfectly with my background in ${topSkills.split(',')[0] || 'tech'}."
-
-📌 Keep it under 90 seconds. End with why THIS role.`
-      };
-    }
-    return { text: '• Current role + years of experience\n• 2 key achievements with numbers\n• Why excited about THIS role\n• Keep under 90 seconds' };
-  }
-
-  if (q.includes('strength')) {
-    if (resume?.skills?.length) {
-      const topSkill = resume.skills[0];
-      return { text: `• Your top strength from CV: "${topSkill}"\n• Say: "My core strength is ${topSkill}. At [company] I used it to [specific result]"\n• Quantify: "reduced X by Y%" or "shipped Z feature"\n• Keep it to one strength, backed by evidence` };
-    }
-    return { text: '• Pick ONE specific strength backed by a real example\n• "At [company] I [action] → [result]"\n• Quantify the result (%, time, users)\n• Avoid: hardworking, team player (too generic)' };
-  }
-
-  if (q.includes('weakness')) {
-    return { text: '• Pick a REAL weakness you\'ve improved\n• "I struggled with X, so I did Y, now Z"\n• Shows self-awareness + growth mindset\n• Never say: "I work too hard"' };
-  }
-
-  if (q.includes('why this') || q.includes('why us') || q.includes('why do you want')) {
-    if (resume?.skills?.length) {
-      const skill = resume.skills[0];
-      return { text: `• Connect your ${skill} expertise to their tech stack\n• Mention their specific product/mission you admire\n• "This role lets me grow in [skill] while contributing to [company mission]"\n• Be specific — not generic praise` };
-    }
-    return { text: '• Mention their specific product/mission\n• Name a team or project that excites you\n• "This role aligns with my goal of X"\n• Be specific — not generic praise' };
-  }
-
-  if (q.includes('5 years') || q.includes('where do you see')) {
-    if (resume?.parsedText) {
-      const title = extractTitle(resume.parsedText);
-      return { text: `• "In 5 years, I see myself as a Senior ${title} or Tech Lead"\n• Mention mastering ${(resume.skills||[]).slice(0,2).join(' and ')||'your domain'}\n• Connect to this company\'s growth trajectory\n• Show ambition that serves THEM, not just you` };
-    }
-    return { text: '• "Senior/Lead [role] in this domain"\n• Mention specific skills you want to build\n• Connect to this company\'s growth\n• Show ambition + alignment' };
-  }
-
-  if (q.includes('salary') || q.includes('compensation') || q.includes('expect')) {
-    return { text: '• Research Glassdoor/Levels.fyi for the role first\n• Give a range (anchor 10–15% high)\n• "Based on my experience and market data: ₹X–Y LPA"\n• "Open to discuss the full package including equity/benefits"' };
-  }
-  if (q.includes('conflict') || q.includes('disagree')) {
-    return { text: '• Situation: describe the disagreement briefly\n• Action: focused on facts, not emotions\n• Listen first, then present data\n• Result: compromise or escalated gracefully' };
-  }
-  if (q.includes('achievement') || q.includes('proud') || q.includes('accomplish')) {
-    return { text: '• Use STAR: Situation → Task → Action → Result\n• Quantify: "increased X by 40%"\n• Pick something relevant to THIS role\n• Make it specific and recent' };
-  }
-  if (q.includes('fail') || q.includes('mistake') || q.includes('went wrong')) {
-    return { text: '• Pick a real failure with a lesson\n• Own it — no excuses\n• "I learned X and changed Y"\n• Show what you\'d do differently' };
-  }
-
-  // ── TECHNICAL CONCEPTS ──────────────────────────────────────────
-  if (q.includes('react') || q.includes('hooks')) {
-    return { text: '• Library for building UIs (not a framework)\n• Virtual DOM → efficient re-renders\n• Key hooks: useState, useEffect, useCallback, useRef\n• React 18: concurrent rendering, Suspense' };
-  }
-  if (q.includes('node') || q.includes('nodejs')) {
-    return { text: '• Non-blocking, event-driven JS runtime\n• Single thread + event loop handles async I/O\n• Best for: APIs, real-time apps, microservices\n• Use cluster module for multi-core' };
-  }
-  if (q.includes('api') || q.includes('rest')) {
-    return { text: '• REST: stateless, HTTP methods (GET/POST/PUT/DELETE)\n• Use proper status codes (200/201/400/401/404/500)\n• Auth: JWT Bearer token in header\n• Version: /api/v1/resource' };
-  }
-  if (q.includes('system design') || q.includes('scale') || q.includes('architect')) {
-    return { text: '• Clarify requirements + scale (users, QPS)\n• Load Balancer → Stateless API → Cache (Redis) → DB\n• Horizontal scaling + CDN for static assets\n• Message queue (Kafka) for async tasks' };
-  }
-  if (q.includes('docker') || q.includes('container')) {
-    return { text: '• Packages app + dependencies in isolated container\n• Dockerfile → Image → Container\n• docker-compose for multi-service dev\n• k8s orchestrates containers at scale' };
-  }
-  if (q.includes('closure')) {
-    return { text: '• Function retaining access to outer scope after outer function returns\n• Used for: data privacy, currying, memoization\n• Example: counter factory, event handlers' };
-  }
-  if (q.includes('promise') || q.includes('async') || q.includes('await')) {
-    return { text: '• Promise: object representing future value (pending/fulfilled/rejected)\n• async/await: syntactic sugar over promises\n• Promise.all() for parallel execution\n• Always catch errors with try/catch' };
-  }
-  if (q.includes('difference between') || q.includes('compare') || q.includes('vs')) {
-    const parts = q.split(/difference between|compare|vs/);
-    return { text: `Key differences for: "${question}"\n• Define each concept separately\n• Compare: purpose, when to use, tradeoffs\n• Give a code example or real use case\n• Conclude with: "I use X when... Y when..."` };
-  }
-  if (q.includes('what is') || q.includes('define') || q.includes('explain')) {
-    return { text: `For: "${question.substring(0, 60)}..."\n• Define in 1 sentence\n• Give a real-world analogy\n• Show a use case or example\n• Mention tradeoffs or alternatives` };
-  }
-
-  // Generic
-  return { text: `• Define the concept clearly (1 sentence)\n• Give a concrete example from your experience\n• Mention tradeoffs or edge cases\n• Connect to how you\'ve applied it` };
-}
+// getAnswer removed, now fetching from backend
 
 interface QA { question: string; text: string; code?: string; }
+
+type AudioMode = 'off' | 'mic' | 'speaker';
 
 export default function AssistantOverlay() {
   const [history, setHistory] = useState<QA[]>([]);
@@ -256,22 +79,25 @@ export default function AssistantOverlay() {
   const [loading, setLoading] = useState(false);
   const [opacity, setOpacity] = useState(1.0);
   const [inputVal, setInputVal] = useState('');
-  const [isListening, setIsListening] = useState(false);
+
+  // ── Audio mode: off | mic | speaker ─────────────────────────────
+  const [audioMode, setAudioMode] = useState<AudioMode>('off');
   const [micError, setMicError] = useState('');
   const [liveText, setLiveText] = useState('');
   const [resume, setResume] = useState<ResumeData | null>(null);
   const [resumeStatus, setResumeStatus] = useState<'loading'|'loaded'|'none'>('loading');
 
-  // Screen capture mode
   const [capturedScreen, setCapturedScreen] = useState<string | null>(null);
   const [screenInput, setScreenInput] = useState('');
 
+  // Refs
   const recRef = useRef<any>(null);
+  const speakerRecRef = useRef<any>(null);
   const answeredRef = useRef<Set<string>>(new Set());
-  const listeningRef = useRef(false);
-  listeningRef.current = isListening;
+  const audioModeRef = useRef<AudioMode>('off');
+  audioModeRef.current = audioMode;
 
-  // ── Fetch user's CV from server ─────────────────────────────
+  // ── Fetch user CV ───────────────────────────────────────────────
   const fetchResume = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -291,7 +117,7 @@ export default function AssistantOverlay() {
     }
   }, []);
 
-  // ── Push answer ─────────────────────────────────────────────
+  // ── Push answer ─────────────────────────────────────────────────
   const pushQA = useCallback((qa: QA) => {
     setHistory(prev => {
       const next = [...prev, qa];
@@ -301,28 +127,50 @@ export default function AssistantOverlay() {
     setLoading(false);
   }, []);
 
-  // ── Instant answer (uses resume for personalization) ────────────
   const resumeRef = useRef<ResumeData | null>(null);
   resumeRef.current = resume;
 
-  const answerNow = useCallback((question: string) => {
+  const answerNow = useCallback(async (question: string) => {
     const key = question.trim().slice(0, 40).toLowerCase();
     if (answeredRef.current.has(key)) return;
     answeredRef.current.add(key);
 
     setLoading(true);
     setLiveText('');
-    // Instantly generate answer using resume data if available
-    const { text, code } = getAnswer(question, resumeRef.current);
-    pushQA({ question, text, code });
+    
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/assistant/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ question })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.answer) {
+          pushQA({ question, text: data.answer.text, code: data.answer.code });
+          return;
+        }
+      }
+      throw new Error('Failed to get answer');
+    } catch (err) {
+      console.error(err);
+      pushQA({ question, text: 'Error fetching answer from AI backend. Please try again.' });
+    }
   }, [pushQA]);
 
-  // ── Speech recognition ──────────────────────────────────────
-  const startListening = useCallback(() => {
+  // ─────────────────────────────────────────────────────────────────
+  // ── MICROPHONE: Web Speech API (captures your own voice) ─────────
+  // ─────────────────────────────────────────────────────────────────
+  const startMicListening = useCallback(() => {
     setMicError('');
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      setMicError('Speech recognition not available. Please use Chrome or the desktop app.');
+      setMicError('❌ Speech recognition unavailable. Use Chrome or the Electron desktop app.');
       return;
     }
 
@@ -332,7 +180,10 @@ export default function AssistantOverlay() {
     rec.lang = 'en-US';
     recRef.current = rec;
 
-    rec.onstart = () => setMicError('');
+    rec.onstart = () => {
+      console.log('[MIC] Speech recognition started');
+      setMicError('');
+    };
 
     rec.onresult = (e: any) => {
       let interim = '';
@@ -347,14 +198,12 @@ export default function AssistantOverlay() {
       const displayText = (interim || final).trim();
       if (displayText) setLiveText(displayText);
 
-      // INSTANT answer: trigger as soon as a question keyword detected in INTERIM
       const checkText = (interim || final).trim();
       if (checkText.length > 8 && hasQuestionSignal(checkText)) {
         answerNow(checkText);
-        answeredRef.current = new Set(); // reset for next question
+        answeredRef.current = new Set();
       }
 
-      // Also answer on any final result that's a sentence
       if (final.trim().length > 10) {
         answerNow(final.trim());
         answeredRef.current = new Set();
@@ -362,37 +211,170 @@ export default function AssistantOverlay() {
     };
 
     rec.onerror = (e: any) => {
+      console.error('[MIC] Speech recognition error:', e.error);
       if (e.error === 'not-allowed') {
-        setMicError('❌ Microphone blocked. Go to Windows Settings → Privacy → Microphone → Allow apps to access your microphone.');
-        setIsListening(false);
+        setMicError('❌ Microphone blocked. Go to Windows Settings → Privacy → Microphone → Allow desktop apps to access your microphone.');
+        setAudioMode('off');
+      } else if (e.error === 'audio-capture') {
+        setMicError('❌ No microphone found. Please plug in a mic and retry.');
+        setAudioMode('off');
       } else if (e.error !== 'no-speech') {
-        console.warn('Speech:', e.error);
+        console.warn('[MIC] Error:', e.error);
       }
     };
 
     rec.onend = () => {
-      if (listeningRef.current) {
+      console.log('[MIC] Speech recognition ended');
+      if (audioModeRef.current === 'mic') {
         try { rec.start(); } catch (_) {}
       }
     };
 
     try {
       rec.start();
-      setIsListening(true);
+      setAudioMode('mic');
       setLiveText('');
     } catch (e) {
-      setMicError('Could not start microphone. Check Windows mic permissions.');
+      setMicError('❌ Could not start microphone. Check Windows Privacy → Microphone settings.');
+      setAudioMode('off');
     }
   }, [answerNow]);
 
+  // ─────────────────────────────────────────────────────────────────
+  // ── SPEAKER/SYSTEM AUDIO: Captures interviewer's voice via
+  //    getDisplayMedia (screen share audio) + Web Speech API
+  //    This captures audio output from the PC speaker.
+  // ─────────────────────────────────────────────────────────────────
+  const startSpeakerListening = useCallback(async () => {
+    setMicError('');
+
+    try {
+      // In Electron, getDisplayMedia can capture system audio
+      const constraints: MediaStreamConstraints = {
+        audio: {
+          // @ts-ignore - Electron-specific constraint for loopback audio
+          mandatory: {
+            chromeMediaSource: 'desktop',
+          }
+        } as any,
+        video: false
+      };
+
+      // Try to get screen/system audio stream
+      let stream: MediaStream | null = null;
+
+      try {
+        // Method 1: getDisplayMedia with system audio (works in Electron)
+        stream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: {
+            // @ts-ignore
+            mandatory: {
+              chromeMediaSource: 'desktop',
+            }
+          },
+          video: false
+        });
+        console.log('[SPEAKER] Got system audio stream via desktop capture');
+      } catch (e1) {
+        console.warn('[SPEAKER] Desktop audio failed, trying getDisplayMedia...', e1);
+        try {
+          // Method 2: getDisplayMedia (shows picker in browser, silent in Electron with permission)
+          stream = await (navigator.mediaDevices as any).getDisplayMedia({
+            audio: true,
+            video: false
+          });
+          console.log('[SPEAKER] Got system audio stream via getDisplayMedia');
+        } catch (e2) {
+          console.warn('[SPEAKER] getDisplayMedia failed:', e2);
+        }
+      }
+
+      if (!stream || stream.getAudioTracks().length === 0) {
+        setMicError('⚠️ Could not capture speaker audio. Make sure Windows allows audio capture. Falling back to mic...');
+        // Fallback to mic
+        startMicListening();
+        return;
+      }
+
+      // Feed the system audio stream into Web Speech via AudioContext
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SR) {
+        setMicError('❌ Speech recognition not available.');
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      const rec = new SR();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+      speakerRecRef.current = { rec, stream };
+
+      rec.onstart = () => {
+        console.log('[SPEAKER] Speech recognition on system audio started');
+        setMicError('');
+      };
+
+      rec.onresult = (e: any) => {
+        let interim = '';
+        let final = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t;
+          else interim += t;
+        }
+        const displayText = (interim || final).trim();
+        if (displayText) setLiveText(`🔊 ${displayText}`);
+
+        const checkText = (interim || final).trim();
+        if (checkText.length > 8 && hasQuestionSignal(checkText)) {
+          answerNow(checkText);
+          answeredRef.current = new Set();
+        }
+        if (final.trim().length > 10) {
+          answerNow(final.trim());
+          answeredRef.current = new Set();
+        }
+      };
+
+      rec.onerror = (e: any) => {
+        console.error('[SPEAKER] Recognition error:', e.error);
+        if (e.error !== 'no-speech') {
+          setMicError(`❌ Speaker capture error: ${e.error}`);
+        }
+      };
+
+      rec.onend = () => {
+        if (audioModeRef.current === 'speaker') {
+          try { rec.start(); } catch (_) {}
+        }
+      };
+
+      rec.start();
+      setAudioMode('speaker');
+      setLiveText('');
+    } catch (err: any) {
+      console.error('[SPEAKER] Failed:', err);
+      setMicError(`❌ Speaker capture failed: ${err.message || err}. Try mic mode instead.`);
+      setAudioMode('off');
+    }
+  }, [answerNow, startMicListening]);
+
+  // ── Stop all audio ──────────────────────────────────────────────
   const stopListening = useCallback(() => {
     recRef.current?.stop();
-    setIsListening(false);
+    recRef.current = null;
+    if (speakerRecRef.current) {
+      speakerRecRef.current.rec?.stop();
+      speakerRecRef.current.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      speakerRecRef.current = null;
+    }
+    setAudioMode('off');
     setLiveText('');
     answeredRef.current = new Set();
   }, []);
 
-  // ── Screen capture: show input prompt ──────────────────────
+  // ── Screen capture ───────────────────────────────────────────────
   const handleCapture = useCallback((b64: string) => {
     setCapturedScreen(b64);
     setScreenInput('');
@@ -407,7 +389,7 @@ export default function AssistantOverlay() {
     answerNow(q);
   }, [screenInput, answerNow]);
 
-  // ── Manual text submit ──────────────────────────────────────
+  // ── Manual text submit ──────────────────────────────────────────
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const q = inputVal.trim();
@@ -417,9 +399,20 @@ export default function AssistantOverlay() {
     answerNow(q);
   }, [inputVal, answerNow]);
 
-  // ── Init ────────────────────────────────────────────────────
+  // ── Mic button cycle: off → mic → speaker → off ─────────────────
+  const cycleAudioMode = useCallback(() => {
+    if (audioMode === 'off') {
+      startMicListening();
+    } else if (audioMode === 'mic') {
+      stopListening();
+      setTimeout(() => startSpeakerListening(), 100);
+    } else {
+      stopListening();
+    }
+  }, [audioMode, startMicListening, startSpeakerListening, stopListening]);
+
+  // ── Init ────────────────────────────────────────────────────────
   useEffect(() => {
-    // Fetch user CV immediately for personalized answers
     fetchResume();
 
     const eAPI = (window as any).electronAPI;
@@ -427,14 +420,29 @@ export default function AssistantOverlay() {
       eAPI.onScreenCapture?.((b64: string) => handleCapture(b64));
       eAPI.onNavigatePrev?.(() => setIdx(p => Math.max(0, p - 1)));
       eAPI.onNavigateNext?.(() => setIdx(p => Math.min(history.length - 1, p + 1)));
+
+      // Log media permission status for debugging
+      eAPI.checkMediaPermissions?.().then((result: any) => {
+        console.log('[PrepAI] Electron media permissions:', result);
+      });
     }
-    pushQA({ question: 'Welcome', text: '✅ PrepAI ready! Click 🎙 mic → speak → instant answer appears.\nOr type below. Ctrl+Enter to capture screen.' });
-    return () => recRef.current?.stop();
+
+    pushQA({
+      question: 'Welcome',
+      text: '✅ PrepAI ready!\n🎙 Click mic for YOUR voice | 🔊 Click again for INTERVIEWER audio\n📸 Ctrl+Enter to capture screen | Type below to ask anything'
+    });
+
+    return () => {
+      recRef.current?.stop();
+      speakerRecRef.current?.rec?.stop();
+      speakerRecRef.current?.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    };
   }, []);
 
   const current = history[idx];
+  const isListening = audioMode !== 'off';
 
-  // ─── RENDER ─────────────────────────────────────────────────
+  // ─── RENDER ─────────────────────────────────────────────────────
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'transparent',
@@ -444,15 +452,26 @@ export default function AssistantOverlay() {
       WebkitAppRegion: 'drag', userSelect: 'none',
     } as any}>
 
-      {/* ══ TOP BAR ═══════════════════════════════ */}
+      {/* ══ TOP BAR ═══════════════════════════════════════════════ */}
       <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', WebkitAppRegion: 'drag' } as any}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, WebkitAppRegion: 'no-drag' } as any}>
           <div style={{ width: 20, height: 20, borderRadius: 6, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900, color: '#fff' }}>P</div>
           <span style={{ fontWeight: 800, fontSize: 12, color: '#f4f4f5', letterSpacing: '-0.3px' }}>PrepAI</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 999, background: 'rgba(239,68,68,.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,.25)', fontSize: 9, fontWeight: 700 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: isListening ? '#ef4444' : '#52525b', transition: 'background .3s' }} />
-            {isListening ? 'LISTENING' : 'LIVE'}
+
+          {/* Live status pill */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 999,
+            background: audioMode === 'off' ? 'rgba(239,68,68,.12)' : audioMode === 'mic' ? 'rgba(99,102,241,.15)' : 'rgba(34,197,94,.12)',
+            color: audioMode === 'off' ? '#fca5a5' : audioMode === 'mic' ? '#a5b4fc' : '#86efac',
+            border: `1px solid ${audioMode === 'off' ? 'rgba(239,68,68,.25)' : audioMode === 'mic' ? 'rgba(99,102,241,.3)' : 'rgba(34,197,94,.25)'}`,
+            fontSize: 9, fontWeight: 700 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%',
+              background: audioMode === 'off' ? '#52525b' : audioMode === 'mic' ? '#6366f1' : '#22c55e',
+              transition: 'background .3s',
+              boxShadow: audioMode !== 'off' ? '0 0 6px currentColor' : 'none'
+            }} />
+            {audioMode === 'off' ? 'LIVE' : audioMode === 'mic' ? 'MIC ON' : 'SPK ON'}
           </span>
+
           {/* CV status pill */}
           <span style={{
             display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px',
@@ -464,6 +483,8 @@ export default function AssistantOverlay() {
             <User size={8} />
             {resumeStatus === 'loading' ? 'CV...' : resumeStatus === 'loaded' ? `CV: ${extractName(resume?.parsedText || '')}` : 'No CV'}
           </span>
+
+          {/* Capture button */}
           <button
             onClick={() => {
               const eAPI = (window as any).electronAPI;
@@ -475,13 +496,22 @@ export default function AssistantOverlay() {
             <Camera size={11} /> Capture
           </button>
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' } as any}>
+          {/* Audio mode cycle button: off → mic → speaker → off */}
           <button
-            onClick={() => isListening ? stopListening() : startListening()}
-            style={{ padding: 6, borderRadius: 8, cursor: 'pointer', border: 'none', outline: 'none', background: isListening ? 'rgba(239,68,68,.18)' : 'transparent', color: isListening ? '#f87171' : '#71717a', transition: 'all .15s' }}
+            onClick={cycleAudioMode}
+            title={audioMode === 'off' ? 'Click: Start mic (your voice)' : audioMode === 'mic' ? 'Click: Switch to speaker capture' : 'Click: Stop audio'}
+            style={{
+              padding: 6, borderRadius: 8, cursor: 'pointer', border: 'none', outline: 'none',
+              background: audioMode === 'off' ? 'transparent' : audioMode === 'mic' ? 'rgba(99,102,241,.18)' : 'rgba(34,197,94,.18)',
+              color: audioMode === 'off' ? '#71717a' : audioMode === 'mic' ? '#a5b4fc' : '#86efac',
+              transition: 'all .15s', position: 'relative'
+            }}
           >
-            {isListening ? <Mic size={14} /> : <MicOff size={14} />}
+            {audioMode === 'speaker' ? <Volume2 size={14} /> : audioMode === 'mic' ? <Mic size={14} /> : <MicOff size={14} />}
           </button>
+
           <button
             onClick={() => (window as any).electronAPI?.hideOverlayWindow?.()}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, background: 'rgba(39,39,42,.6)', color: '#71717a', border: '1px solid rgba(63,63,70,.5)', fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none' }}
@@ -494,27 +524,30 @@ export default function AssistantOverlay() {
         </div>
       </div>
 
-      {/* ══ MIDDLE ═══════════════════════════════════════════ */}
+      {/* ══ MIDDLE ════════════════════════════════════════════════ */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8, margin: '6px 0', WebkitAppRegion: 'no-drag' } as any}>
 
         {/* Content card */}
         <div style={{ ...G, borderRadius: 16, flex: 1, display: 'flex', flexDirection: 'column', padding: '10px 12px', overflow: 'hidden', gap: 6 }}>
 
-          {/* Mic error */}
+          {/* Mic/speaker error */}
           {micError && (
             <p style={{ fontSize: 10, color: '#fca5a5', margin: 0, padding: '5px 8px', background: 'rgba(239,68,68,.1)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)', lineHeight: 1.4 }}>{micError}</p>
           )}
 
-          {/* LIVE CAPTION - shows while speaking */}
+          {/* LIVE CAPTION */}
           {(liveText || isListening) && (
             <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(63,63,70,.4)' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Mic size={9} style={{ animation: isListening ? 'pulse 1s infinite' : 'none' }} />
-                {liveText ? 'Hearing you...' : 'Waiting for speech...'}
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4,
+                color: audioMode === 'speaker' ? '#86efac' : '#818cf8' }}>
+                {audioMode === 'speaker' ? <Volume2 size={9} style={{ animation: 'pulse 1s infinite' }} /> : <Mic size={9} style={{ animation: 'pulse 1s infinite' }} />}
+                {liveText
+                  ? (audioMode === 'speaker' ? 'Hearing interviewer...' : 'Hearing you...')
+                  : (audioMode === 'speaker' ? 'Listening to speaker...' : 'Waiting for speech...')}
               </div>
               <p style={{ fontSize: 12, color: '#d4d4d8', fontStyle: 'italic', margin: 0, lineHeight: 1.4 }}>
                 {liveText || 'Speak now...'}
-                <span style={{ display: 'inline-block', width: 2, height: 13, background: '#818cf8', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
+                <span style={{ display: 'inline-block', width: 2, height: 13, background: audioMode === 'speaker' ? '#86efac' : '#818cf8', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
               </p>
             </div>
           )}
@@ -543,7 +576,6 @@ export default function AssistantOverlay() {
             </div>
           ) : current ? (
             <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Code block FIRST if available */}
               {current.code && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 9, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
@@ -554,7 +586,6 @@ export default function AssistantOverlay() {
                   </pre>
                 </div>
               )}
-              {/* Answer text */}
               <div>
                 {!current.code && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '.06em' }}>
@@ -585,7 +616,7 @@ export default function AssistantOverlay() {
         </div>
       </div>
 
-      {/* ══ BOTTOM BAR ════════════════════════════════════════ */}
+      {/* ══ BOTTOM BAR ════════════════════════════════════════════ */}
       <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', gap: 10, padding: '5px 14px', WebkitAppRegion: 'no-drag' } as any}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <button onClick={() => setIdx(p => Math.max(0, p - 1))} disabled={idx <= 0}
@@ -600,10 +631,20 @@ export default function AssistantOverlay() {
             <ChevronRight size={13} />
           </button>
         </div>
+
+        {/* Audio mode hint */}
+        <span style={{ fontSize: 9, color: '#3f3f46', flexShrink: 0 }}>
+          {audioMode === 'off' ? '🎙=mic 🔊=spk' : audioMode === 'mic' ? '🎙 Your mic active' : '🔊 Speaker active'}
+        </span>
+
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
           <input
             type="text" value={inputVal} onChange={e => setInputVal(e.target.value)}
-            placeholder={isListening ? '🎙 Listening live...' : 'Type question or say it out loud...'}
+            placeholder={
+              audioMode === 'mic' ? '🎙 Listening to your mic...' :
+              audioMode === 'speaker' ? '🔊 Listening to speaker...' :
+              'Type question or speak via mic button...'
+            }
             style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: '#e4e4e7', paddingRight: 26, fontFamily: 'inherit', caretColor: '#818cf8' } as any}
           />
           <button type="submit" disabled={!inputVal.trim()}

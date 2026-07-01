@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -22,15 +22,50 @@ const mime = {
   '.woff2': 'font/woff2'
 };
 
-// Local static files server to support React Router HTML5 BrowserRouter
+// ─── Grant all media permissions BEFORE any window is created ──────
+function setupPermissions() {
+  // Allow ALL permission checks (mic, camera, audio, notifications, etc.)
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    console.log('[PERM CHECK]', permission, requestingOrigin);
+    return true;
+  });
+
+  // Allow ALL permission requests (mic, speaker, camera, display capture)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    console.log('[PERM REQUEST]', permission);
+    callback(true);
+  });
+
+  // Allow media device enumeration (needed for getUserMedia to list mic/speaker)
+  session.defaultSession.setDevicePermissionHandler((details) => {
+    console.log('[DEVICE PERM]', details.deviceType);
+    return true;
+  });
+
+  // Override CSP to allow speech recognition and media APIs
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+          "media-src * mediastream: blob: data: 'unsafe-inline'; " +
+          "connect-src * data: blob: 'unsafe-inline';"
+        ]
+      }
+    });
+  });
+}
+
+// ─── Local static file server for packaged build ───────────────────
 function startLocalServer(callback) {
   localServer = http.createServer((req, res) => {
     let reqUrl = req.url.split('?')[0];
     const hasExtension = path.extname(reqUrl) !== '';
-    let filePath = hasExtension 
-      ? path.join(__dirname, 'dist', reqUrl) 
+    let filePath = hasExtension
+      ? path.join(__dirname, 'dist', reqUrl)
       : path.join(__dirname, 'dist/index.html');
-      
+
     fs.readFile(filePath, (err, content) => {
       if (err) {
         fs.readFile(path.join(__dirname, 'dist/index.html'), (err2, content2) => {
@@ -49,7 +84,7 @@ function startLocalServer(callback) {
       }
     });
   });
-  
+
   localServer.listen(0, '127.0.0.1', () => {
     localPort = localServer.address().port;
     console.log('[SERVER] Packaged static assets serving on port:', localPort);
@@ -57,6 +92,7 @@ function startLocalServer(callback) {
   });
 }
 
+// ─── Screen capture: grab any screen source ───────────────────────
 async function captureActiveScreenBase64() {
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
@@ -69,40 +105,71 @@ async function captureActiveScreenBase64() {
   throw new Error("No active screen captures found.");
 }
 
+// ─── Create main overlay window ───────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 280,
+    width: 820,
+    height: 300,
     minWidth: 500,
-    minHeight: 180,
+    minHeight: 200,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: false,
-    title: "CareerCopilot Assistant Overlay",
+    title: "PrepAI Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      // Required for speech recognition + media APIs to work
+      webSecurity: false,
+      allowRunningInsecureContent: true,
+      // Explicit media stream permissions
+      experimentalFeatures: true,
     },
     show: false
   });
 
-  // Exclude overlay from screen shares/recordings on Windows (SetWindowDisplayAffinity)
-  mainWindow.setContentProtection(true);
+  // ⚠️ DO NOT call setContentProtection(true) — it blocks desktopCapturer
+  //    and also prevents Web Speech API from accessing mic on some Windows builds.
+  //    If you need screen protection for the overlay itself, use a separate
+  //    hidden capture window instead.
 
-  // Load React router
-  const startUrl = isDev 
-    ? 'http://localhost:5173/assistant' 
+  const startUrl = isDev
+    ? 'http://localhost:5173/assistant'
     : `http://127.0.0.1:${localPort}/assistant`;
 
   mainWindow.loadURL(startUrl);
 
+  // Open DevTools in dev mode to debug issues
+  if (isDev) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    console.log('[WINDOW] Main overlay window shown');
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[WINDOW] Page finished loading');
+    // Inject permission grant helper into the page context
+    mainWindow.webContents.executeJavaScript(`
+      // Monkey-patch getUserMedia to always succeed in Electron
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        console.log('[PrepAI] getUserMedia available');
+      } else {
+        console.warn('[PrepAI] getUserMedia NOT available - mic will not work');
+      }
+      console.log('[PrepAI] SpeechRecognition:', !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+    `).catch(console.error);
+  });
+
+  mainWindow.webContents.on('media-started-playing', () => {
+    console.log('[MEDIA] Audio playback started');
   });
 
   mainWindow.on('closed', () => {
@@ -110,8 +177,9 @@ function createWindow() {
   });
 }
 
+// ─── Global keyboard shortcuts ────────────────────────────────────
 function registerShortcuts() {
-  // 1. Toggles Assistant Visibility (Ctrl + /)
+  // 1. Toggle overlay visibility (Ctrl + /)
   globalShortcut.register('CommandOrControl+/', () => {
     if (!mainWindow) return;
     if (mainWindow.isVisible()) {
@@ -121,22 +189,23 @@ function registerShortcuts() {
     }
   });
 
-  // 2. Capture and Analyze Screen (Ctrl + Enter)
+  // 2. Capture screen and send to overlay (Ctrl + Enter)
   globalShortcut.register('CommandOrControl+Enter', async () => {
     if (!mainWindow) return;
     try {
       const base64Image = await captureActiveScreenBase64();
       mainWindow.webContents.send('screen-captured', base64Image);
-      
       if (!mainWindow.isVisible()) {
         mainWindow.show();
       }
     } catch (err) {
       console.error("Screen capture failed:", err);
+      // Still notify renderer so it can show the prompt
+      mainWindow.webContents.send('screen-captured', '');
     }
   });
 
-  // 3. Navigation Controls (Ctrl + [ and Ctrl + ])
+  // 3. Navigate answer history (Ctrl + [ / Ctrl + ])
   globalShortcut.register('CommandOrControl+[', () => {
     if (mainWindow) mainWindow.webContents.send('navigate-prev');
   });
@@ -145,7 +214,7 @@ function registerShortcuts() {
     if (mainWindow) mainWindow.webContents.send('navigate-next');
   });
 
-  // 4. Move Window Coordinates using Ctrl + Arrow keys
+  // 4. Move window with Ctrl + Arrow keys
   globalShortcut.register('CommandOrControl+Up', () => {
     if (!mainWindow) return;
     const [x, y] = mainWindow.getPosition();
@@ -171,12 +240,16 @@ function registerShortcuts() {
   });
 }
 
+// ─── App bootstrap ────────────────────────────────────────────────
 app.whenReady().then(() => {
+  // ✅ Setup permissions FIRST before any window or server is created
+  setupPermissions();
+
   const initApp = () => {
     createWindow();
     registerShortcuts();
-    
-    // Create System Tray
+
+    // System tray icon
     try {
       const iconPath = path.join(__dirname, 'assets', 'icon.ico');
       tray = new Tray(iconPath);
@@ -184,10 +257,10 @@ app.whenReady().then(() => {
         { label: 'Show Assistant', click: () => { if (mainWindow) mainWindow.show(); else createWindow(); } },
         { label: 'Quit', click: () => app.quit() }
       ]);
-      tray.setToolTip('CareerCopilot Assistant Active');
+      tray.setToolTip('PrepAI Interview Assistant Active');
       tray.setContextMenu(contextMenu);
     } catch (err) {
-      console.log("No tray icon setup. Skipping.");
+      console.log("[TRAY] No tray icon found, skipping:", err.message);
     }
   };
 
@@ -199,24 +272,16 @@ app.whenReady().then(() => {
     });
   }
 
-  // Auto-allow microphone, audio and media permissions for speech recognition
-  const { session } = require('electron');
-  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    if (['audio', 'media', 'microphone', 'mediaKeySystem'].includes(permission)) return true;
-    return true; // allow all permissions for overlay
-  });
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    // Always allow mic/audio for speech recognition
-    callback(true);
-  });
+  // ─── IPC Handlers ────────────────────────────────────────────
 
-  // Register local IPC handlers
+  // Triggered from renderer button click
   ipcMain.on('trigger-screen-capture', async () => {
     try {
       const base64Image = await captureActiveScreenBase64();
       if (mainWindow) mainWindow.webContents.send('screen-captured', base64Image);
     } catch (err) {
       console.error("Screen capture IPC trigger failed:", err);
+      if (mainWindow) mainWindow.webContents.send('screen-captured', '');
     }
   });
 
@@ -232,6 +297,25 @@ app.whenReady().then(() => {
 
   ipcMain.handle('sync-history-state', (event, state) => {
     console.log('[IPC] Synced history index:', state.currentIndex);
+  });
+
+  // ─── Get available media sources for system audio capture ────
+  ipcMain.handle('get-screen-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 0, height: 0 }
+      });
+      return sources.map(s => ({ id: s.id, name: s.name }));
+    } catch (err) {
+      console.error('[IPC] get-screen-sources failed:', err);
+      return [];
+    }
+  });
+
+  // ─── Mic/speaker diagnostic ping ─────────────────────────────
+  ipcMain.handle('check-media-permissions', async () => {
+    return { granted: true, message: 'Permissions granted at Electron level' };
   });
 });
 

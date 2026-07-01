@@ -52,4 +52,32 @@ router.post('/analyze-screen', authMiddleware, async (req: AuthRequest, res: Res
   }
 });
 
+// POST /assistant/ask - Answer real-time transcribed audio question
+router.post('/ask', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { question } = req.body;
+
+  if (!question || question.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Question is required' });
+  }
+
+  try {
+    // Retrieve user's latest parsed resume
+    const userResume = await Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
+    const resumeText = userResume?.parsedText || '[No resume uploaded yet. Answer based on standard tech standards]';
+
+    const answer = await OpenAIService.answerAssistantQuery(question, resumeText);
+    
+    return res.json({ success: true, answer });
+  } catch (error: any) {
+    console.error('Assistant ask error:', error);
+    return res.json({
+      success: true,
+      answer: {
+        text: 'Error generating response. Please try again or ask the question differently.',
+        code: ''
+      }
+    });
+  }
+});
+
 export default router;

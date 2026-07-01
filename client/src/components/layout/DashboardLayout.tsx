@@ -78,6 +78,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
+            
+            // For admin dashboard, use a standard anchor tag to break out of the React Router
+            // and pass the token in case the admin app is on a different subdomain
+            if (item.path === '/admin') {
+              const token = localStorage.getItem('token');
+              const userStr = localStorage.getItem('user');
+              const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || '/admin';
+              const href = token && userStr 
+                ? `${adminUrl}?token=${token}&user=${encodeURIComponent(userStr)}` 
+                : adminUrl;
+                
+              return (
+                <a
+                  key={item.name}
+                  href={href}
+                  className={`flex items-center px-4 py-3 rounded-xl transition-all duration-150 group font-medium text-sm ${
+                    isActive
+                      ? 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-600 dark:text-indigo-400 border-l-4 border-indigo-500'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-dark-800/40 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 mr-3 transition-colors ${
+                    isActive ? 'text-indigo-500' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+                  }`} />
+                  {item.name}
+                </a>
+              );
+            }
+
             return (
               <Link
                 key={item.name}
@@ -164,6 +193,32 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
+                  
+                  if (item.path === '/admin') {
+                    const token = localStorage.getItem('token');
+                    const userStr = localStorage.getItem('user');
+                    const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || '/admin';
+                    const href = token && userStr 
+                      ? `${adminUrl}?token=${token}&user=${encodeURIComponent(userStr)}` 
+                      : adminUrl;
+                      
+                    return (
+                      <a
+                        key={item.name}
+                        href={href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center px-4 py-3 rounded-xl font-medium text-sm ${
+                          isActive
+                            ? 'bg-indigo-50 dark:bg-dark-800 text-indigo-600 dark:text-indigo-400'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-dark-800'
+                        }`}
+                      >
+                        <Icon className="w-5 h-5 mr-3" />
+                        {item.name}
+                      </a>
+                    );
+                  }
+
                   return (
                     <Link
                       key={item.name}
