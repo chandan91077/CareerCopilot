@@ -655,77 +655,118 @@ export default function AssistantOverlay() {
       {/* ══ MIDDLE ════════════════════════════════════════════════ */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8, margin: '6px 0', WebkitAppRegion: 'no-drag' } as any}>
 
-        {/* Content card */}
-        <div style={{ ...G, borderRadius: 16, flex: 1, display: 'flex', flexDirection: 'column', padding: '10px 12px', overflow: 'hidden', gap: 6 }}>
-
-          {/* Mic/speaker error */}
-          {micError && (
-            <p style={{ fontSize: 10, color: '#fca5a5', margin: 0, padding: '5px 8px', background: 'rgba(239,68,68,.1)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)', lineHeight: 1.4 }}>{micError}</p>
-          )}
-
-          {/* LIVE CAPTION */}
-          {(liveText || isListening) && (
-            <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(63,63,70,.4)' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4,
-                color: audioMode === 'speaker' ? '#86efac' : '#818cf8' }}>
-                {audioMode === 'speaker' ? <Volume2 size={9} style={{ animation: 'pulse 1s infinite' }} /> : <Mic size={9} style={{ animation: 'pulse 1s infinite' }} />}
-                {liveText
-                  ? (audioMode === 'speaker' ? 'Hearing audio...' : 'Hearing you...')
-                  : (audioMode === 'speaker' ? 'Hearing mic & speaker...' : 'Waiting for speech...')}
-              </div>
-              <p style={{ fontSize: 12, color: '#d4d4d8', fontStyle: 'italic', margin: 0, lineHeight: 1.4 }}>
-                {liveText || 'Speak now...'}
-                <span style={{ display: 'inline-block', width: 2, height: 13, background: audioMode === 'speaker' ? '#86efac' : '#818cf8', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
-              </p>
+        {/* Content card with Row layout */}
+        <div style={{ ...G, borderRadius: 16, flex: 1, display: 'flex', flexDirection: 'row', padding: '10px 12px', overflow: 'hidden', gap: 12 }}>
+          
+          {/* LEFT COLUMN: Speaker & AI Output (60% width) */}
+          <div style={{ flex: 1.6, display: 'flex', flexDirection: 'column', minWidth: 0, borderRight: '1px solid rgba(63,63,70,.35)', paddingRight: 12, gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              <Sparkles size={9} style={{ color: '#818cf8' }} /> Speaker / AI Answer
             </div>
-          )}
 
-          {/* Screen capture input prompt */}
-          {capturedScreen !== null && (
-            <div style={{ padding: '8px 10px', background: 'rgba(99,102,241,.1)', borderRadius: 10, border: '1px solid rgba(99,102,241,.25)' }}>
-              <p style={{ fontSize: 10, color: '#a5b4fc', fontWeight: 600, margin: '0 0 6px 0' }}>📸 Screen captured! What do you need?</p>
-              <form onSubmit={submitScreenInput} style={{ display: 'flex', gap: 6 }}>
-                <input
-                  autoFocus
-                  type="text" value={screenInput} onChange={e => setScreenInput(e.target.value)}
-                  placeholder='e.g. "Java code", "explain this question", "answer this"'
-                  style={{ flex: 1, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#e4e4e7', outline: 'none', fontFamily: 'inherit' }}
-                />
-                <button type="submit" style={{ padding: '4px 10px', borderRadius: 6, background: '#6366f1', color: '#fff', border: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Go</button>
-              </form>
-            </div>
-          )}
-
-          {/* AI Answer */}
-          {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
-              <Loader2 size={14} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
-              <span style={{ fontSize: 10, color: '#71717a' }}>Generating...</span>
-            </div>
-          ) : current ? (
             <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {current.code && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 9, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                    <Code2 size={9} /> Code
-                  </div>
-                  <pre style={{ margin: 0, fontSize: 9.5, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 8, padding: '8px 10px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.55, whiteSpace: 'pre' }}>
-                    <code>{current.code}</code>
-                  </pre>
+              {/* Live Speaker transcript (combined audio) */}
+              {audioMode === 'speaker' && (liveText || isListening) && (
+                <div style={{ padding: '6px 8px', background: 'rgba(52,211,153,.06)', borderRadius: 8, border: '1px solid rgba(52,211,153,.15)' }}>
+                  <p style={{ margin: 0, fontSize: 10.5, color: '#d4d4d8', fontStyle: 'italic', lineHeight: 1.35 }}>
+                    {liveText || 'Hearing mic & speaker...'}
+                    <span style={{ display: 'inline-block', width: 2, height: 11, background: '#86efac', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
+                  </p>
                 </div>
               )}
-              <div>
-                {!current.code && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                    <Sparkles size={9} style={{ color: '#818cf8' }} /> Answer
+
+              {/* AI Answer & Code block */}
+              {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
+                  <Loader2 size={14} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
+                  <span style={{ fontSize: 10, color: '#71717a' }}>Generating...</span>
+                </div>
+              ) : current ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {/* Code block */}
+                  {current.code && (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 8.5, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                        <Code2 size={9} /> Code
+                      </div>
+                      <pre style={{ margin: 0, fontSize: 9.5, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 8, padding: '8px 10px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.5, whiteSpace: 'pre' }}>
+                        <code>{current.code}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Text answer */}
+                  <div>
+                    <p style={{ margin: 0, fontSize: 10.5, color: '#e4e4e7', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                      {current.text}
+                    </p>
                   </div>
-                )}
-                <p style={{ margin: 0, fontSize: 11, color: '#e4e4e7', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
-                  {current.text}
-                </p>
-              </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+
+          {/* RIGHT COLUMN: Candidate & Input (40% width) */}
+          <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', minWidth: 0, gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              <Mic size={9} /> Candidate / User Input
+            </div>
+            
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* Live Candidate transcript */}
+              {audioMode === 'mic' && (liveText || isListening) && (
+                <div style={{ padding: '6px 8px', background: 'rgba(99,102,241,.06)', borderRadius: 8, border: '1px solid rgba(99,102,241,.15)' }}>
+                  <p style={{ margin: 0, fontSize: 10.5, color: '#d4d4d8', fontStyle: 'italic', lineHeight: 1.35 }}>
+                    {liveText || 'Speak now...'}
+                    <span style={{ display: 'inline-block', width: 2, height: 11, background: '#818cf8', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
+                  </p>
+                </div>
+              )}
+
+              {/* Selected QA question */}
+              {current && current.question !== 'Welcome' && (
+                <div style={{ padding: '8px 10px', background: 'rgba(255,255,255,.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,.05)' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: '#e4e4e7', fontWeight: 600, lineHeight: 1.4 }}>
+                    ❓ {current.question}
+                  </p>
+                </div>
+              )}
+
+              {/* Screen capture input prompt */}
+              {capturedScreen !== null && (
+                <div style={{ padding: '8px 10px', background: 'rgba(99,102,241,.1)', borderRadius: 10, border: '1px solid rgba(99,102,241,.25)' }}>
+                  <p style={{ fontSize: 10, color: '#a5b4fc', fontWeight: 600, margin: '0 0 6px 0' }}>📸 Screen captured! What do you need?</p>
+                  <form onSubmit={submitScreenInput} style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      autoFocus
+                      type="text" value={screenInput} onChange={e => setScreenInput(e.target.value)}
+                      placeholder='e.g. "Java code", "explain this"'
+                      style={{ flex: 1, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#e4e4e7', outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <button type="submit" style={{ padding: '4px 10px', borderRadius: 6, background: '#6366f1', color: '#fff', border: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Go</button>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            {/* Manual text input inside the right column */}
+            <form onSubmit={handleSubmit} style={{ display: 'flex', alignItems: 'center', position: 'relative', marginTop: 4 }}>
+              <input
+                type="text" value={inputVal} onChange={e => setInputVal(e.target.value)}
+                placeholder={
+                  audioMode === 'mic' ? '🎙️ Listening to mic...' :
+                  audioMode === 'speaker' ? '🔊 Combined capturing...' :
+                  'Type question...'
+                }
+                style={{ width: '100%', background: 'rgba(0,0,0,.3)', border: '1px solid rgba(63,63,70,.4)', borderRadius: 8, padding: '6px 30px 6px 10px', fontSize: 10, color: '#e4e4e7', outline: 'none', fontFamily: 'inherit', caretColor: '#818cf8' } as any}
+              />
+              <button type="submit" disabled={!inputVal.trim()}
+                style={{ position: 'absolute', right: 8, padding: 4, border: 'none', background: 'transparent', color: inputVal.trim() ? '#818cf8' : '#3f3f46', cursor: inputVal.trim() ? 'pointer' : 'default' }}>
+                <Send size={11} />
+              </button>
+            </form>
+          </div>
+
         </div>
 
         {/* Opacity slider */}
@@ -761,25 +802,9 @@ export default function AssistantOverlay() {
         </div>
 
         {/* Audio mode hint */}
-        <span style={{ fontSize: 9, color: '#3f3f46', flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: '#3f3f46', flexShrink: 0, marginLeft: 'auto' }}>
           {audioMode === 'off' ? '🎙=mic 🔊=combined' : audioMode === 'mic' ? '🎙 Mic active' : '🎙+🔊 Combined active'}
         </span>
-
-        <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
-          <input
-            type="text" value={inputVal} onChange={e => setInputVal(e.target.value)}
-            placeholder={
-              audioMode === 'mic' ? '🎙 Listening to your mic...' :
-              audioMode === 'speaker' ? '🎙+🔊 Hearing mic & speaker...' :
-              'Type question or speak via mic button...'
-            }
-            style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: '#e4e4e7', paddingRight: 26, fontFamily: 'inherit', caretColor: '#818cf8' } as any}
-          />
-          <button type="submit" disabled={!inputVal.trim()}
-            style={{ position: 'absolute', right: 0, padding: 4, border: 'none', background: 'transparent', color: inputVal.trim() ? '#818cf8' : '#3f3f46', cursor: inputVal.trim() ? 'pointer' : 'default' }}>
-            <Send size={13} />
-          </button>
-        </form>
       </div>
 
       <style>{`
