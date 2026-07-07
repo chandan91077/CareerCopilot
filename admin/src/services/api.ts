@@ -24,16 +24,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear local records and redirect if unauthorized
+      // Clear local records - the AdminLayout will show its own login form
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      
-      const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-          ? 'http://localhost:5173'
-          : window.location.origin.replace('-admin', ''));
-          
-      window.location.href = `${mainAppUrl}/login`;
+      // Reload to show the admin login form instead of redirecting away
+      window.location.reload();
     }
     return Promise.reject(error);
   }

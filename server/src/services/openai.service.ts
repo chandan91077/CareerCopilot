@@ -315,5 +315,26 @@ Output strictly as JSON in the following format:
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
+
+  static async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
+    const openai = getOpenAIClient();
+    if (!openai) {
+      // Mock transcription for local development when API key is missing
+      return "What are the differences between SQL and NoSQL databases?";
+    }
+
+    try {
+      const file = await OpenAI.toFile(audioBuffer, filename);
+      const response = await openai.audio.transcriptions.create({
+        file: file,
+        model: 'whisper-1',
+      });
+      return response.text;
+    } catch (err: any) {
+      console.error('Whisper transcription failed:', err);
+      throw err;
+    }
+  }
 }
 export { DEFAULT_PROMPTS };
+

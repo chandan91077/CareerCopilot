@@ -1,7 +1,13 @@
 import { Router, Response } from 'express';
+import multer from 'multer';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { OpenAIService } from '../services/openai.service';
 import { Resume } from '../models';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+});
 
 const router = Router();
 
@@ -77,6 +83,21 @@ router.post('/ask', authMiddleware, async (req: AuthRequest, res: Response) => {
         code: ''
       }
     });
+  }
+});
+
+// POST /assistant/transcribe - Transcribe real-time audio chunk
+router.post('/transcribe', authMiddleware, upload.single('audio'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No audio file uploaded' });
+    }
+
+    const transcription = await OpenAIService.transcribeAudio(req.file.buffer, req.file.originalname);
+    return res.json({ success: true, text: transcription });
+  } catch (error: any) {
+    console.error('Transcribe error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error transcribing audio' });
   }
 });
 

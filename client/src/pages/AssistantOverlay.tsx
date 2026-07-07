@@ -67,7 +67,16 @@ function hasQuestionSignal(text: string): boolean {
   return triggers.some(k => t.includes(k));
 }
 
-// getAnswer removed, now fetching from backend
+// Helper to construct API requests targeting the correct host (local or remote Render server)
+const getApiUrl = (path: string) => {
+  const baseUrl = import.meta.env.VITE_API_URL || 'https://careercopilot-hu7q.onrender.com';
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${normalizedBase}${normalizedPath.substring(4)}`;
+  }
+  return `${normalizedBase}${normalizedPath}`;
+};
 
 interface QA { question: string; text: string; code?: string; }
 
@@ -97,12 +106,22 @@ export default function AssistantOverlay() {
   const audioModeRef = useRef<AudioMode>('off');
   audioModeRef.current = audioMode;
 
+  const hasSoundRef = useRef(false);
+  const combinedRecRef = useRef<{
+    micStream?: MediaStream;
+    desktopStream?: MediaStream;
+    audioCtx?: AudioContext;
+    recorder?: MediaRecorder;
+    soundCheckInterval?: any;
+    chunkTimeout?: any;
+  } | null>(null);
+
   // ── Fetch user CV ───────────────────────────────────────────────
   const fetchResume = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) { setResumeStatus('none'); return; }
-      const res = await fetch('/api/resume/latest', {
+      const res = await fetch(getApiUrl('/api/resume/latest'), {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -140,7 +159,7 @@ export default function AssistantOverlay() {
     
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/assistant/ask', {
+      const res = await fetch(getApiUrl('/api/assistant/ask'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -241,124 +260,195 @@ export default function AssistantOverlay() {
   }, [answerNow]);
 
   // ─────────────────────────────────────────────────────────────────
-  // ── SPEAKER/SYSTEM AUDIO: Captures interviewer's voice via
-  //    getDisplayMedia (screen share audio) + Web Speech API
-  //    This captures audio output from the PC speaker.
+  // ── SPEAKER/SYSTEM AUDIO: Captures BOTH mic and system speaker
+  //    using Web Audio API mixing, AnalyserNode voice detection,
+  //    and server-side OpenAI Whisper API transcription.
   // ─────────────────────────────────────────────────────────────────
   const startSpeakerListening = useCallback(async () => {
     setMicError('');
+    hasSoundRef.current = false;
 
     try {
-      // In Electron, getDisplayMedia can capture system audio
-      const constraints: MediaStreamConstraints = {
-        audio: {
-          // @ts-ignore - Electron-specific constraint for loopback audio
-          mandatory: {
-            chromeMediaSource: 'desktop',
-          }
-        } as any,
-        video: false
-      };
+      const eAPI = (window as any).electronAPI;
+      if (!eAPI || !eAPI.getScreenSources) {
+        throw new Error('Electron APIs not available. Please run in the PrepAI desktop application.');
+      }
 
-      // Try to get screen/system audio stream
-      let stream: MediaStream | null = null;
+      // 1. Retrieve screen sources from Electron
+      const sources = await eAPI.getScreenSources();
+      const screenSource = sources.find((s: any) => s.id.startsWith('screen:')) || sources[0];
+      if (!screenSource) {
+        throw new Error('No screen sources found for system audio capture.');
+      }
 
+      // 2. Request desktop audio & video stream
+      let desktopStream: MediaStream;
       try {
-        // Method 1: getDisplayMedia with system audio (works in Electron)
-        stream = await (navigator.mediaDevices as any).getUserMedia({
+        desktopStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            // @ts-ignore
             mandatory: {
               chromeMediaSource: 'desktop',
+              chromeMediaSourceId: screenSource.id
             }
           },
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: screenSource.id
+            }
+          }
+        } as any);
+      } catch (err: any) {
+        console.warn('[SPEAKER] Direct desktop capture failed, trying fallback getDisplayMedia...', err);
+        desktopStream = await (navigator.mediaDevices as any).getDisplayMedia({
+          audio: true,
+          video: true
+        });
+      }
+
+      // Stop video tracks immediately to optimize performance
+      desktopStream.getVideoTracks().forEach(track => track.stop());
+
+      // 3. Request user microphone stream
+      let micStream: MediaStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
           video: false
         });
-        console.log('[SPEAKER] Got system audio stream via desktop capture');
-      } catch (e1) {
-        console.warn('[SPEAKER] Desktop audio failed, trying getDisplayMedia...', e1);
+      } catch (err: any) {
+        desktopStream.getTracks().forEach(t => t.stop());
+        throw new Error('Could not access microphone: ' + (err.message || err));
+      }
+
+      // 4. Create Web Audio context & mix both mic + speaker streams
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const dest = audioCtx.createMediaStreamDestination();
+
+      const micSourceNode = audioCtx.createMediaStreamSource(micStream);
+      const desktopSourceNode = audioCtx.createMediaStreamSource(desktopStream);
+
+      micSourceNode.connect(dest);
+      desktopSourceNode.connect(dest);
+
+      // 5. Connect an analyser node to detect volume activity
+      const analyser = audioCtx.createAnalyser();
+      dest.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const soundCheckInterval = setInterval(() => {
+        if (audioModeRef.current !== 'speaker') {
+          clearInterval(soundCheckInterval);
+          return;
+        }
+        analyser.getByteTimeDomainData(dataArray);
+        for (let i = 0; i < bufferLength; i++) {
+          const amplitude = Math.abs(dataArray[i] - 128);
+          if (amplitude > 4) { // Small threshold to capture low speech
+            hasSoundRef.current = true;
+            break;
+          }
+        }
+      }, 100);
+
+      // Save references for clean stopping later
+      combinedRecRef.current = {
+        micStream,
+        desktopStream,
+        audioCtx,
+        soundCheckInterval
+      };
+
+      // 6. Define transcription uploader function
+      const sendToTranscribe = async (audioBlob: Blob) => {
         try {
-          // Method 2: getDisplayMedia (shows picker in browser, silent in Electron with permission)
-          stream = await (navigator.mediaDevices as any).getDisplayMedia({
-            audio: true,
-            video: false
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'audio.webm');
+
+          const token = localStorage.getItem('token');
+          const res = await fetch(getApiUrl('/api/assistant/transcribe'), {
+            method: 'POST',
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: formData
           });
-          console.log('[SPEAKER] Got system audio stream via getDisplayMedia');
-        } catch (e2) {
-          console.warn('[SPEAKER] getDisplayMedia failed:', e2);
-        }
-      }
 
-      if (!stream || stream.getAudioTracks().length === 0) {
-        setMicError('⚠️ Could not capture speaker audio. Make sure Windows allows audio capture. Falling back to mic...');
-        // Fallback to mic
-        startMicListening();
-        return;
-      }
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.text) {
+              const text = data.text.trim();
+              if (text.length > 0) {
+                setLiveText(text);
+                console.log('[COMBINED] Transcribed text:', text);
 
-      // Feed the system audio stream into Web Speech via AudioContext
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SR) {
-        setMicError('❌ Speech recognition not available.');
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-
-      const rec = new SR();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = 'en-US';
-      speakerRecRef.current = { rec, stream };
-
-      rec.onstart = () => {
-        console.log('[SPEAKER] Speech recognition on system audio started');
-        setMicError('');
-      };
-
-      rec.onresult = (e: any) => {
-        let interim = '';
-        let final = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) final += t;
-          else interim += t;
-        }
-        const displayText = (interim || final).trim();
-        if (displayText) setLiveText(`🔊 ${displayText}`);
-
-        const checkText = (interim || final).trim();
-        if (checkText.length > 8 && hasQuestionSignal(checkText)) {
-          answerNow(checkText);
-          answeredRef.current = new Set();
-        }
-        if (final.trim().length > 10) {
-          answerNow(final.trim());
-          answeredRef.current = new Set();
+                // Check for question signals or minimum substantial length
+                if (text.length > 8 && (hasQuestionSignal(text) || text.length > 30)) {
+                  answerNow(text);
+                  answeredRef.current = new Set();
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[COMBINED] Transcribe failed:', err);
         }
       };
 
-      rec.onerror = (e: any) => {
-        console.error('[SPEAKER] Recognition error:', e.error);
-        if (e.error !== 'no-speech') {
-          setMicError(`❌ Speaker capture error: ${e.error}`);
+      // 7. Define chunked recording cycle loop
+      const recordCycle = () => {
+        if (audioModeRef.current !== 'speaker') return;
+
+        const chunks: Blob[] = [];
+        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+
+        if (combinedRecRef.current) {
+          combinedRecRef.current.recorder = recorder;
+        }
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            chunks.push(e.data);
+          }
+        };
+
+        recorder.onstop = () => {
+          if (chunks.length > 0) {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            if (hasSoundRef.current) {
+              hasSoundRef.current = false; // Reset threshold for next cycle
+              sendToTranscribe(blob);
+            }
+          }
+
+          // Restart cycle if mode is still speaker
+          if (audioModeRef.current === 'speaker') {
+            recordCycle();
+          }
+        };
+
+        recorder.start();
+
+        if (combinedRecRef.current) {
+          combinedRecRef.current.chunkTimeout = setTimeout(() => {
+            if (recorder.state !== 'inactive') {
+              recorder.stop();
+            }
+          }, 5000); // 5 second segments
         }
       };
 
-      rec.onend = () => {
-        if (audioModeRef.current === 'speaker') {
-          try { rec.start(); } catch (_) {}
-        }
-      };
-
-      rec.start();
+      recordCycle();
       setAudioMode('speaker');
       setLiveText('');
     } catch (err: any) {
-      console.error('[SPEAKER] Failed:', err);
-      setMicError(`❌ Speaker capture failed: ${err.message || err}. Try mic mode instead.`);
+      console.error('[SPEAKER] Setup failed:', err);
+      setMicError(`❌ Speaker capture failed: ${err.message || err}`);
       setAudioMode('off');
     }
-  }, [answerNow, startMicListening]);
+  }, [answerNow]);
 
   // ── Stop all audio ──────────────────────────────────────────────
   const stopListening = useCallback(() => {
@@ -369,6 +459,22 @@ export default function AssistantOverlay() {
       speakerRecRef.current.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
       speakerRecRef.current = null;
     }
+
+    if (combinedRecRef.current) {
+      const ref = combinedRecRef.current;
+      if (ref.recorder && ref.recorder.state !== 'inactive') {
+        try { ref.recorder.stop(); } catch (_) {}
+      }
+      ref.micStream?.getTracks().forEach(t => t.stop());
+      ref.desktopStream?.getTracks().forEach(t => t.stop());
+      if (ref.audioCtx && ref.audioCtx.state !== 'closed') {
+        ref.audioCtx.close().catch(console.error);
+      }
+      if (ref.soundCheckInterval) clearInterval(ref.soundCheckInterval);
+      if (ref.chunkTimeout) clearTimeout(ref.chunkTimeout);
+      combinedRecRef.current = null;
+    }
+
     setAudioMode('off');
     setLiveText('');
     answeredRef.current = new Set();
@@ -436,6 +542,20 @@ export default function AssistantOverlay() {
       recRef.current?.stop();
       speakerRecRef.current?.rec?.stop();
       speakerRecRef.current?.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+
+      if (combinedRecRef.current) {
+        const ref = combinedRecRef.current;
+        if (ref.recorder && ref.recorder.state !== 'inactive') {
+          try { ref.recorder.stop(); } catch (_) {}
+        }
+        ref.micStream?.getTracks().forEach(t => t.stop());
+        ref.desktopStream?.getTracks().forEach(t => t.stop());
+        if (ref.audioCtx && ref.audioCtx.state !== 'closed') {
+          ref.audioCtx.close().catch(console.error);
+        }
+        if (ref.soundCheckInterval) clearInterval(ref.soundCheckInterval);
+        if (ref.chunkTimeout) clearTimeout(ref.chunkTimeout);
+      }
     };
   }, []);
 
@@ -469,7 +589,7 @@ export default function AssistantOverlay() {
               transition: 'background .3s',
               boxShadow: audioMode !== 'off' ? '0 0 6px currentColor' : 'none'
             }} />
-            {audioMode === 'off' ? 'LIVE' : audioMode === 'mic' ? 'MIC ON' : 'SPK ON'}
+            {audioMode === 'off' ? 'LIVE' : audioMode === 'mic' ? 'MIC ON' : 'COMBINED ON'}
           </span>
 
           {/* CV status pill */}
@@ -501,7 +621,7 @@ export default function AssistantOverlay() {
           {/* Audio mode cycle button: off → mic → speaker → off */}
           <button
             onClick={cycleAudioMode}
-            title={audioMode === 'off' ? 'Click: Start mic (your voice)' : audioMode === 'mic' ? 'Click: Switch to speaker capture' : 'Click: Stop audio'}
+            title={audioMode === 'off' ? 'Click: Start mic (your voice)' : audioMode === 'mic' ? 'Click: Switch to combined mic + speaker' : 'Click: Stop audio'}
             style={{
               padding: 6, borderRadius: 8, cursor: 'pointer', border: 'none', outline: 'none',
               background: audioMode === 'off' ? 'transparent' : audioMode === 'mic' ? 'rgba(99,102,241,.18)' : 'rgba(34,197,94,.18)',
@@ -542,8 +662,8 @@ export default function AssistantOverlay() {
                 color: audioMode === 'speaker' ? '#86efac' : '#818cf8' }}>
                 {audioMode === 'speaker' ? <Volume2 size={9} style={{ animation: 'pulse 1s infinite' }} /> : <Mic size={9} style={{ animation: 'pulse 1s infinite' }} />}
                 {liveText
-                  ? (audioMode === 'speaker' ? 'Hearing interviewer...' : 'Hearing you...')
-                  : (audioMode === 'speaker' ? 'Listening to speaker...' : 'Waiting for speech...')}
+                  ? (audioMode === 'speaker' ? 'Hearing audio...' : 'Hearing you...')
+                  : (audioMode === 'speaker' ? 'Hearing mic & speaker...' : 'Waiting for speech...')}
               </div>
               <p style={{ fontSize: 12, color: '#d4d4d8', fontStyle: 'italic', margin: 0, lineHeight: 1.4 }}>
                 {liveText || 'Speak now...'}
@@ -634,7 +754,7 @@ export default function AssistantOverlay() {
 
         {/* Audio mode hint */}
         <span style={{ fontSize: 9, color: '#3f3f46', flexShrink: 0 }}>
-          {audioMode === 'off' ? '🎙=mic 🔊=spk' : audioMode === 'mic' ? '🎙 Your mic active' : '🔊 Speaker active'}
+          {audioMode === 'off' ? '🎙=mic 🔊=combined' : audioMode === 'mic' ? '🎙 Mic active' : '🎙+🔊 Combined active'}
         </span>
 
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
@@ -642,7 +762,7 @@ export default function AssistantOverlay() {
             type="text" value={inputVal} onChange={e => setInputVal(e.target.value)}
             placeholder={
               audioMode === 'mic' ? '🎙 Listening to your mic...' :
-              audioMode === 'speaker' ? '🔊 Listening to speaker...' :
+              audioMode === 'speaker' ? '🎙+🔊 Hearing mic & speaker...' :
               'Type question or speak via mic button...'
             }
             style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: '#e4e4e7', paddingRight: 26, fontFamily: 'inherit', caretColor: '#818cf8' } as any}

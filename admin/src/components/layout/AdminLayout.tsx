@@ -50,20 +50,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
-    // Basic protection check
+    // If user is not logged in as admin, show the built-in login form
     if (!user || user.role !== 'admin') {
-      const resolvedMainUrl = mainAppUrl.replace(/\/$/, '').toLowerCase();
-      const currentOrigin = window.location.origin.replace(/\/$/, '').toLowerCase();
-      
-      if (resolvedMainUrl !== currentOrigin) {
-        window.location.href = `${mainAppUrl}/login`;
-      } else {
-        setUnauthorized(true);
-      }
+      setUnauthorized(true);
     } else {
       setUnauthorized(false);
     }
-  }, [user, mainAppUrl]);
+  }, [user]);
 
   useEffect(() => {
     if (isDarkMode) {

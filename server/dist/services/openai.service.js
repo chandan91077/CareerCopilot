@@ -265,5 +265,56 @@ Output strictly as JSON in the following format:
         });
         return JSON.parse(response.choices[0].message.content || '{}');
     }
+    static async answerAssistantQuery(question, resumeText) {
+        const openai = getOpenAIClient();
+        if (!openai) {
+            return {
+                text: "Mock AI Answer: Ensure you listen carefully and break down your answer using the STAR method if it's a behavioral question. For technical questions, mention trade-offs.",
+                code: "// Simulated fallback code\nconsole.log('OpenAI API Key missing');"
+            };
+        }
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are an expert real-time mock interview companion.
+The user is currently in an interview. You will receive transcribed audio (either the interviewer asking a question, or the user speaking).
+Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
+Keep the answer concise (under 90 seconds to read) and use bullet points where applicable.
+Output strictly as JSON in the following format:
+{
+  "text": "Constructive hints and guidelines to speak or explain based on the user's resume...",
+  "code": "Optional code block in correct language if it is a coding question, else empty string"
+}`
+                },
+                {
+                    role: 'user',
+                    content: `Candidate's Resume:\n${resumeText}\n\nTranscribed Audio/Question:\n${question}`
+                }
+            ],
+            response_format: { type: 'json_object' }
+        });
+        return JSON.parse(response.choices[0].message.content || '{}');
+    }
+    static async transcribeAudio(audioBuffer, filename) {
+        const openai = getOpenAIClient();
+        if (!openai) {
+            // Mock transcription for local development when API key is missing
+            return "What are the differences between SQL and NoSQL databases?";
+        }
+        try {
+            const file = await openai_1.default.toFile(audioBuffer, filename);
+            const response = await openai.audio.transcriptions.create({
+                file: file,
+                model: 'whisper-1',
+            });
+            return response.text;
+        }
+        catch (err) {
+            console.error('Whisper transcription failed:', err);
+            throw err;
+        }
+    }
 }
 exports.OpenAIService = OpenAIService;
