@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://careercopilot-hu7q.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,6 +24,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
+      // Do not reload if the failure is on the login request itself
+      if (error.config && error.config.url && error.config.url.includes('/auth/login')) {
+        return Promise.reject(error);
+      }
+
       // Clear local records - the AdminLayout will show its own login form
       localStorage.removeItem('token');
       localStorage.removeItem('user');
