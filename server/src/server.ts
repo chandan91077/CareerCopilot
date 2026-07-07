@@ -37,7 +37,12 @@ app.use(express.json());
 // API Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  max: 1000, // Limit each IP to 1000 requests per window (increased to support real-time features)
+  skip: (req) => {
+    // Skip rate limiting for real-time transcription chunks and mock assistant queries
+    const path = req.originalUrl || '';
+    return path.includes('/transcribe') || path.includes('/ask');
+  },
   message: { message: 'Too many requests from this IP, please try again after 15 minutes' },
   standardHeaders: true,
   legacyHeaders: false,
