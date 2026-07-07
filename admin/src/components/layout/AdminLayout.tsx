@@ -42,7 +42,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       ? 'http://localhost:5173'
       : window.location.origin.replace('-admin', ''));
 
-  const [unauthorized, setUnauthorized] = useState(false);
+  const [unauthorized, setUnauthorized] = useState(() => {
+    const rawUser = localStorage.getItem('user');
+    if (!rawUser) return true;
+    try {
+      const u = JSON.parse(rawUser);
+      return u.role !== 'admin';
+    } catch {
+      return true;
+    }
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
