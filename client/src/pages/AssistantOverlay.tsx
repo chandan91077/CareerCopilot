@@ -323,6 +323,10 @@ export default function AssistantOverlay() {
 
       // 4. Create Web Audio context & mix both mic + speaker streams
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      console.log('[SPEAKER] AudioContext state:', audioCtx.state);
       const dest = audioCtx.createMediaStreamDestination();
 
       const micSourceNode = audioCtx.createMediaStreamSource(micStream);
@@ -346,7 +350,10 @@ export default function AssistantOverlay() {
         analyser.getByteTimeDomainData(dataArray);
         for (let i = 0; i < bufferLength; i++) {
           const amplitude = Math.abs(dataArray[i] - 128);
-          if (amplitude > 4) { // Small threshold to capture low speech
+          if (amplitude > 2) { // Lowered threshold to 2 for maximum sensitivity
+            if (!hasSoundRef.current) {
+              console.log('[SPEAKER] Sound activity detected! Amplitude:', amplitude);
+            }
             hasSoundRef.current = true;
             break;
           }
@@ -363,6 +370,7 @@ export default function AssistantOverlay() {
 
       // 6. Define transcription uploader function
       const sendToTranscribe = async (audioBlob: Blob) => {
+        console.log('[COMBINED] Sending audio chunk to transcribe, size:', audioBlob.size);
         try {
           const formData = new FormData();
           formData.append('audio', audioBlob, 'audio.webm');
