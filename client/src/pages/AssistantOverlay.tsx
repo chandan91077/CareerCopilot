@@ -107,6 +107,8 @@ const HALLUCINATING_PATTERNS = [
   /welcome\s+back/i,
   /good morning,?\s*girl/i,
   /thanks?\s+for\s+watching/i,
+  /hello\s+everyone/i,
+  /hello\s+there/i,
 ];
 
 function isHallucinationOrFiller(text: string): boolean {
@@ -118,7 +120,13 @@ function isHallucinationOrFiller(text: string): boolean {
 function isSubstantiveQuestion(text: string): boolean {
   if (isHallucinationOrFiller(text)) return false;
   const clean = text.trim();
-  if (clean.endsWith('?')) return true;
+  const lower = clean.toLowerCase();
+
+  // Explicitly reject greetings, pleasantries, and non-questions
+  const GREETINGS = [
+    /hello/i, /hi\b/i, /hey/i, /good\s+(morning|afternoon|evening)/i,
+    /everyone/i, /thank/i, /welcome/i, /nice\s+to\s+meet/i, /how\s+are\s+you/i
+  ];
 
   const keywords = [
     'what', 'why', 'how', 'when', 'where', 'who', 'which',
@@ -126,10 +134,18 @@ function isSubstantiveQuestion(text: string): boolean {
     'explain', 'tell', 'describe', 'define', 'write', 'implement',
     'code', 'design', 'architecture', 'system', 'database', 'sql',
     'java', 'python', 'react', 'node', 'api', 'bug', 'algorithm',
-    'complexity', 'difference', 'compare', 'advantage', 'disadvantage'
+    'complexity', 'difference', 'compare', 'advantage', 'disadvantage',
+    'git', 'repo', 'push', 'commit', 'branch', 'merge', 'rebase'
   ];
-  const lower = clean.toLowerCase();
-  return keywords.some(k => lower.includes(k));
+
+  const hasQuestionKeyword = keywords.some(k => lower.includes(k));
+
+  if (GREETINGS.some(g => g.test(lower)) && !hasQuestionKeyword) {
+    return false;
+  }
+
+  if (clean.endsWith('?')) return true;
+  return hasQuestionKeyword;
 }
 
 function getTodayDateKey(): string {

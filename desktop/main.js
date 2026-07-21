@@ -185,6 +185,13 @@ function createWindow() {
     applyWin32ContentProtection(mainWindow);
     setTimeout(() => applyWin32ContentProtection(mainWindow), 500);
     setTimeout(() => applyWin32ContentProtection(mainWindow), 1500);
+
+    // Continuously re-enforce screen protection every 1 second
+    setInterval(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        applyWin32ContentProtection(mainWindow);
+      }
+    }, 1000);
   });
 
   mainWindow.on('focus', () => applyWin32ContentProtection(mainWindow));
