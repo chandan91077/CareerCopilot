@@ -93,6 +93,43 @@ function nowTimestamp(): string {
   return new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
+const HALLUCINATED_PHRASES = [
+  'thank you',
+  'thank you.',
+  'thank you very much',
+  'thanks',
+  'thanks for watching',
+  'subtitles by',
+  'amara.org',
+  'kampen',
+  'bye',
+  'goodbye',
+  'subscribe',
+  'like and subscribe',
+  'uh-huh',
+  'uh',
+  'um',
+  'yeah',
+  'okay',
+  'ok',
+];
+
+function isHallucinationOrFiller(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').trim();
+  if (!normalized || normalized.length < 2) return true;
+  return HALLUCINATED_PHRASES.includes(normalized);
+}
+
+function isSubstantiveQuestion(text: string): boolean {
+  if (isHallucinationOrFiller(text)) return false;
+  const normalized = text.trim().toLowerCase();
+  if (normalized.length < 14) {
+    const keywords = ['what', 'why', 'how', 'when', 'who', 'code', 'java', 'sql', 'react', 'node', 'api', 'bug', 'test', 'db', 'explain', 'tell', 'define'];
+    return keywords.some(k => normalized.includes(k));
+  }
+  return true;
+}
+
 // Helper to construct API requests targeting the correct host (local or remote Render server)
 const getApiUrl = (path: string) => {
   const baseUrl = import.meta.env.VITE_API_URL || 'https://careercopilot-hu7q.onrender.com';
@@ -306,11 +343,10 @@ export default function AssistantOverlay() {
         console.log(`[TRANSCRIBE] ✅ Result (${speaker}):`, text);
         setStage('Transcription', 'ok', `${text.length} chars`);
 
-        if (text.length > 0) {
+        if (text.length > 0 && !isHallucinationOrFiller(text)) {
           addCaption(speaker, text);
-          if (text.length > 8) {
+          if (isSubstantiveQuestion(text)) {
             answerNow(text);
-            answeredRef.current = new Set();
           }
         }
       } else {
@@ -441,13 +477,12 @@ export default function AssistantOverlay() {
 
       if (interim) setInterimCaption(interim);
 
-      if (final.trim().length > 0) {
+      if (final.trim().length > 0 && !isHallucinationOrFiller(final.trim())) {
         console.log('[MIC] Final transcript:', final.trim());
         setStage('Transcription', 'ok', `${final.trim().length} chars`);
         addCaption('Me', final.trim());
-        if (final.trim().length > 10) {
+        if (isSubstantiveQuestion(final.trim())) {
           answerNow(final.trim());
-          answeredRef.current = new Set();
         }
       }
     };
