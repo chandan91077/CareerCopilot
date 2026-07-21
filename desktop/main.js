@@ -118,30 +118,31 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: false,
+    type: 'toolbar', // Helps Windows DWM exclude window from screen capture
     title: "PrepAI Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
-      // Required for speech recognition + media APIs to work
       webSecurity: false,
       allowRunningInsecureContent: true,
-      // Explicit media stream permissions
       experimentalFeatures: true,
     },
     show: false
   });
 
+  const applyContentProtection = () => {
+    try {
+      const ok = mainWindow.setContentProtection(true);
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      console.log(`[WINDOW] setContentProtection(true) -> ${ok}`);
+    } catch (e) {
+      console.error('[WINDOW] setContentProtection error:', e);
+    }
+  };
 
-  // ✅ Hide this overlay from screen sharing (Zoom, Teams, Meet, OBS, etc.)
-  //    setContentProtection(true) makes THIS window invisible to any screen
-  //    capture tool — so interviewers cannot see PrepAI answers on your shared
-  //    screen.  This does NOT prevent desktopCapturer from working (that
-  //    captures the desktop, not this window) and does NOT affect mic/audio.
-  mainWindow.setContentProtection(true);
-  console.log('[WINDOW] Content protection enabled — overlay hidden from screen sharing');
-
+  applyContentProtection();
 
   const startUrl = isDev
     ? 'http://localhost:5173/assistant'
@@ -149,17 +150,17 @@ function createWindow() {
 
   mainWindow.loadURL(startUrl);
 
-  // Open DevTools in dev mode to debug issues
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    // Reapply content protection after show() — some Windows builds need this
-    mainWindow.setContentProtection(true);
-    console.log('[WINDOW] Main overlay window shown (screen-share protected)');
+    applyContentProtection();
+    setTimeout(applyContentProtection, 500);
   });
+
+  mainWindow.on('focus', applyContentProtection);
 
 
   mainWindow.webContents.on('did-finish-load', () => {

@@ -287,12 +287,15 @@ export default function AssistantOverlay() {
         setStage('Transcription', 'error', errMsg);
 
         // Surface meaningful error to user in caption area
-        if (res.status === 401) {
-          setMicError('❌ Auth error: Please log in or refresh the app.');
+        if (res.status === 429 || errMsg.includes('429') || errMsg.includes('quota')) {
+          setMicError('❌ OpenAI API quota exceeded (429). Please check billing details at platform.openai.com/account/billing, or set GROQ_API_KEY in server/.env.');
+          setStage('Transcription', 'error', 'Quota exceeded (429)');
+        } else if (res.status === 401) {
+          setMicError('❌ Invalid API key. Please check OPENAI_API_KEY or GROQ_API_KEY in server/.env.');
         } else if (res.status === 503) {
           setMicError('❌ ' + errMsg);
         } else {
-          setMicError(`❌ Transcription failed: ${errMsg}`);
+          setMicError(`❌ Transcription failed (${res.status}): ${errMsg}`);
         }
         return;
       }

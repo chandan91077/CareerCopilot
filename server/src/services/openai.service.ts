@@ -317,23 +317,63 @@ Output strictly as JSON in the following format:
   }
 
   static async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-    const openai = getOpenAIClient();
-    if (!openai) {
-      // Throw so the route handler returns a 503 with a clear message
-      throw new Error('OPENAI_API_KEY is not set. Add it to server/.env to enable Whisper transcription.');
+    const openaiKey = process.env.OPENAI_API_KEY || '';
+    const groqKey = process.env.GROQ_API_KEY || '';
+
+    if (!openaiKey && !groqKey) {
+      throw new Error('OPENAI_API_KEY or GROQ_API_KEY is not set. Please add a valid API key to server/.env.');
     }
 
-    try {
-      const file = await OpenAI.toFile(audioBuffer, filename);
-      const response = await openai.audio.transcriptions.create({
-        file: file,
-        model: 'whisper-1',
-      });
-      return response.text;
-    } catch (err: any) {
-      console.error('[Whisper] Transcription failed:', err.message || err);
-      throw err;
+    // 1. Try Groq API if GROQ_API_KEY is provided
+    if (groqKey) {
+      try {
+        const groq = new OpenAI({
+          apiKey: groqKey,
+          baseURL: 'https://api.groq.com/openai/v1',
+        });
+        const file = await OpenAI.toFile(audioBuffer, filename);
+        const response = await groq.audio.transcriptions.create({
+          file: file,
+          model: 'whisper-large-v3',
+        });
+        if (response.text) return response.text;
+      } catch (groqErr: any) {
+        console.warn('[Whisper-Groq] Groq transcription error:', groqErr.message || groqErr);
+        if (!openaiKey) throw groqErr;
+      }
     }
+
+    // 2. Try OpenAI API
+    if (openaiKey) {
+      const openai = new OpenAI({ apiKey: openaiKey });
+      try {
+        const file = await OpenAI.toFile(audioBuffer, filename);
+        const response = await openai.audio.transcriptions.create({
+          file: file,
+          model: 'whisper-1',
+        });
+        return response.text;
+      } catch (err: any) {
+        console.error('[Whisper-OpenAI] Transcription failed:', err.status, err.message || err);
+
+        // Format clean actionable errors
+        if (err.status === 429 || err.code === 'insufficient_quota' || (err.message && err.message.includes('quota'))) {
+          const quotaErr = new Error('OpenAI API quota exceeded (429). Please add credits at platform.openai.com/account/billing or add a free GROQ_API_KEY to server/.env.');
+          (quotaErr as any).status = 429;
+          throw quotaErr;
+        }
+
+        if (err.status === 401 || (err.message && err.message.includes('invalid_api_key'))) {
+          const authErr = new Error('Invalid OpenAI API key. Please verify OPENAI_API_KEY in server/.env.');
+          (authErr as any).status = 401;
+          throw authErr;
+        }
+
+        throw err;
+      }
+    }
+
+    throw new Error('No working Speech-to-Text API configured.');
   }
 }
 export { DEFAULT_PROMPTS };

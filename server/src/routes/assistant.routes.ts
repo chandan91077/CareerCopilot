@@ -110,11 +110,11 @@ router.post('/transcribe', optionalAuthMiddleware, upload.single('audio'), async
       return res.status(400).json({ success: false, message: 'No audio file uploaded' });
     }
 
-    // Guard: if API key is absent, return a clear error instead of fake text
-    if (!process.env.OPENAI_API_KEY) {
+    // Guard: if neither API key is set, return 503
+    if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
       return res.status(503).json({
         success: false,
-        message: 'Transcription unavailable: OPENAI_API_KEY is not configured on the server. Add it to server/.env and restart.'
+        message: 'Transcription unavailable: OPENAI_API_KEY or GROQ_API_KEY is not configured on the server.'
       });
     }
 
@@ -125,8 +125,12 @@ router.post('/transcribe', optionalAuthMiddleware, upload.single('audio'), async
     console.log(`[TRANSCRIBE] Whisper result: "${transcription.slice(0, 80)}..."`);
     return res.json({ success: true, text: transcription });
   } catch (error: any) {
-    console.error('[TRANSCRIBE] Error:', error.message || error);
-    return res.status(500).json({ success: false, message: error.message || 'Server error transcribing audio' });
+    console.error('[TRANSCRIBE] Error:', error.status || 500, error.message || error);
+    const statusCode = error.status || (error.message?.includes('429') || error.message?.includes('quota') ? 429 : 500);
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Server error transcribing audio'
+    });
   }
 });
 
