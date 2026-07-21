@@ -152,8 +152,8 @@ function createWindow() {
     minWidth: 500,
     minHeight: 200,
     frame: false,
-    transparent: false,
-    backgroundColor: '#09090e',
+    transparent: true,
+    backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: false,
@@ -169,6 +169,10 @@ function createWindow() {
     },
     show: false
   });
+
+  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity)
+  mainWindow.setContentProtection(true);
+  applyWin32ContentProtection(mainWindow);
 
   const startUrl = isDev
     ? 'http://localhost:5173/assistant'
