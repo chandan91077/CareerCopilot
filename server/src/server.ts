@@ -17,6 +17,8 @@ import resumeRoutes from './routes/resume.routes';
 import assistantRoutes from './routes/assistant.routes';
 import paymentRoutes from './routes/payment.routes';
 import adminRoutes from './routes/admin.routes';
+import interviewRoutes from './routes/interview.routes';
+import codingRoutes from './routes/coding.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -54,6 +56,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/interview', interviewRoutes);
+app.use('/api/coding', codingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
@@ -83,20 +87,32 @@ io.on('connection', (socket) => {
   });
 });
 
-// Connect to Database
+// ── Start HTTP server immediately (don't wait for DB) ──────────────
+// /api/assistant/transcribe and /api/assistant/ask work without MongoDB.
+// DB-dependent routes (auth, resume, interview) return 503 gracefully if DB is down.
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai-interview-platform';
 
+server.listen(PORT, () => {
+  console.log(`\n✅ [SERVER] API listening on port ${PORT}`);
+  console.log(`   Transcription: http://localhost:${PORT}/api/assistant/transcribe`);
+  console.log(`   Ask:           http://localhost:${PORT}/api/assistant/ask\n`);
+});
+
+// ── Connect MongoDB in background ───────────────────────────────────
 mongoose
   .connect(MONGO_URI)
   .then(() => {
-    console.log('[DB] Connected to MongoDB database successfully.');
-    
-    server.listen(PORT, () => {
-      console.log(`[SERVER] API listening on port ${PORT}...`);
-    });
+    console.log('[DB] ✅ Connected to MongoDB successfully.');
   })
   .catch((err) => {
-    console.error('[DB] Connection error:', err.message);
-    process.exit(1);
+    console.warn('[DB] ⚠️  MongoDB unavailable:', err.message);
+    console.warn('[DB]    Server still running — transcription & AI answers work without DB.');
+    console.warn('[DB]    Start MongoDB to enable auth/resume/interview features.\n');
   });
+
+// ── Graceful shutdown ────────────────────────────────────────────────
+process.on('SIGINT', () => {
+  console.log('\n[SERVER] Shutting down...');
+  server.close(() => mongoose.connection.close().finally(() => process.exit(0)));
+});
