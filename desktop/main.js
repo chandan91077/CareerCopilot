@@ -133,10 +133,15 @@ function createWindow() {
     show: false
   });
 
-  // ⚠️ DO NOT call setContentProtection(true) — it blocks desktopCapturer
-  //    and also prevents Web Speech API from accessing mic on some Windows builds.
-  //    If you need screen protection for the overlay itself, use a separate
-  //    hidden capture window instead.
+
+  // ✅ Hide this overlay from screen sharing (Zoom, Teams, Meet, OBS, etc.)
+  //    setContentProtection(true) makes THIS window invisible to any screen
+  //    capture tool — so interviewers cannot see PrepAI answers on your shared
+  //    screen.  This does NOT prevent desktopCapturer from working (that
+  //    captures the desktop, not this window) and does NOT affect mic/audio.
+  mainWindow.setContentProtection(true);
+  console.log('[WINDOW] Content protection enabled — overlay hidden from screen sharing');
+
 
   const startUrl = isDev
     ? 'http://localhost:5173/assistant'
@@ -151,8 +156,11 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    console.log('[WINDOW] Main overlay window shown');
+    // Reapply content protection after show() — some Windows builds need this
+    mainWindow.setContentProtection(true);
+    console.log('[WINDOW] Main overlay window shown (screen-share protected)');
   });
+
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[WINDOW] Page finished loading');
