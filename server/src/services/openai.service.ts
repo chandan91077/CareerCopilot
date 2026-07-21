@@ -319,8 +319,8 @@ Output strictly as JSON in the following format:
   static async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
     const openai = getOpenAIClient();
     if (!openai) {
-      // Mock transcription for local development when API key is missing
-      return "What are the differences between SQL and NoSQL databases?";
+      // Throw so the route handler returns a 503 with a clear message
+      throw new Error('OPENAI_API_KEY is not set. Add it to server/.env to enable Whisper transcription.');
     }
 
     try {
@@ -331,7 +331,7 @@ Output strictly as JSON in the following format:
       });
       return response.text;
     } catch (err: any) {
-      console.error('Whisper transcription failed:', err);
+      console.error('[Whisper] Transcription failed:', err.message || err);
       throw err;
     }
   }

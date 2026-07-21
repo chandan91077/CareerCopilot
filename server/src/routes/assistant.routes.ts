@@ -1,8 +1,9 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
-import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
+import { authMiddleware, optionalAuthMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { OpenAIService } from '../services/openai.service';
 import { Resume } from '../models';
+
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -10,6 +11,19 @@ const upload = multer({
 });
 
 const router = Router();
+
+// Log a clear warning at startup if OPENAI_API_KEY is missing
+if (!process.env.OPENAI_API_KEY) {
+  console.error(
+    '\n' +
+    '╔══════════════════════════════════════════════════════════════╗\n' +
+    '║  ⚠️  OPENAI_API_KEY is NOT set in server/.env               ║\n' +
+    '║  Audio transcription (Whisper) will NOT work.               ║\n' +
+    '║  Add your key: OPENAI_API_KEY=sk-...                        ║\n' +
+    '╚══════════════════════════════════════════════════════════════╝\n'
+  );
+}
+
 
 // POST /assistant/analyze-screen - Analyze base64 image capture against user resume
 router.post('/analyze-screen', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -59,7 +73,8 @@ router.post('/analyze-screen', authMiddleware, async (req: AuthRequest, res: Res
 });
 
 // POST /assistant/ask - Answer real-time transcribed audio question
-router.post('/ask', authMiddleware, async (req: AuthRequest, res: Response) => {
+// Uses optionalAuth so the desktop overlay works without a login session
+router.post('/ask', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const { question } = req.body;
 
   if (!question || question.trim() === '') {
@@ -87,16 +102,30 @@ router.post('/ask', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // POST /assistant/transcribe - Transcribe real-time audio chunk
-router.post('/transcribe', authMiddleware, upload.single('audio'), async (req: AuthRequest, res: Response) => {
+// Uses optionalAuth: works for both logged-in users and the Electron
+// desktop overlay guest mode. A valid OpenAI key is still required.
+router.post('/transcribe', optionalAuthMiddleware, upload.single('audio'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No audio file uploaded' });
     }
 
+    // Guard: if API key is absent, return a clear error instead of fake text
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'Transcription unavailable: OPENAI_API_KEY is not configured on the server. Add it to server/.env and restart.'
+      });
+    }
+
+    console.log(`[TRANSCRIBE] Received audio chunk: ${req.file.size} bytes, type: ${req.file.mimetype}, user: ${req.user?.id || 'guest'}`);
+
     const transcription = await OpenAIService.transcribeAudio(req.file.buffer, req.file.originalname);
+
+    console.log(`[TRANSCRIBE] Whisper result: "${transcription.slice(0, 80)}..."`);
     return res.json({ success: true, text: transcription });
   } catch (error: any) {
-    console.error('Transcribe error:', error);
+    console.error('[TRANSCRIBE] Error:', error.message || error);
     return res.status(500).json({ success: false, message: error.message || 'Server error transcribing audio' });
   }
 });

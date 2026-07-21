@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Camera, Mic, MicOff, ChevronLeft, ChevronRight,
-  Send, Loader2, EyeOff, Sun, X, Code2, User, Volume2
+  Send, Loader2, EyeOff, Sun, X, Code2, User, Volume2,
+  AlertCircle, CheckCircle2, Radio, UploadCloud
 } from 'lucide-react';
 
 // ─── Glass styles ──────────────────────────────────────────────────
@@ -18,6 +19,23 @@ interface ResumeData {
   summary: string;
   skills: string[];
   originalName: string;
+}
+
+// ─── Caption entry (persistent history) ──────────────────────────
+interface CaptionEntry {
+  id: string;
+  speaker: 'Me' | 'Interviewer' | 'Combined';
+  text: string;
+  timestamp: string; // HH:MM:SS
+  interim?: boolean;
+}
+
+// ─── Pipeline stage log entry ─────────────────────────────────────
+type StageStatus = 'ok' | 'error' | 'pending' | 'idle';
+interface PipelineStage {
+  label: string;
+  status: StageStatus;
+  detail?: string;
 }
 
 function extractName(text: string): string {
@@ -45,26 +63,34 @@ function extractTitle(text: string): string {
   return 'Software Professional';
 }
 
-function extractCompanies(text: string): string[] {
-  const found: string[] = [];
-  const m = text.match(/(?:at|@|worked\s+at|employed\s+at|formerly\s+at)\s+([A-Z][\w\s&.]+?)(?:\s*[,.|\\n]|$)/gi);
-  if (m) m.slice(0, 2).forEach(x => { const c = x.replace(/^(at|@|worked at|employed at|formerly at)\s+/i,'').trim(); if(c) found.push(c); });
-  return found;
+/** Returns the best supported MediaRecorder MIME type for this browser/OS */
+function getSupportedMimeType(): string {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+  ];
+  for (const mime of candidates) {
+    if (MediaRecorder.isTypeSupported(mime)) {
+      console.log('[AUDIO] Supported MIME type detected:', mime);
+      return mime;
+    }
+  }
+  console.warn('[AUDIO] No preferred MIME type supported — using browser default');
+  return '';
 }
 
-// ─── Instant keyword detection ─────────────────────────────────────
-function hasQuestionSignal(text: string): boolean {
-  const t = text.toLowerCase();
-  const triggers = [
-    'what is', 'what are', 'how do', 'how does', 'how can', 'how would',
-    'explain', 'describe', 'define', 'tell me', 'can you', 'why do', 'why does',
-    'difference between', 'compare', 'when do', 'what happens', 'what does',
-    'implement', 'write a', 'code for', 'java', 'python', 'javascript', 'sql',
-    'react', 'node', 'api', 'database', 'algorithm', 'complexity',
-    'yourself', 'strength', 'weakness', 'salary', 'why this', 'where do you see',
-    'greatest', 'challenge', 'achievement', 'conflict', 'team'
-  ];
-  return triggers.some(k => t.includes(k));
+/** Get file extension matching the MIME type for Whisper */
+function mimeToExtension(mime: string): string {
+  if (mime.includes('ogg')) return 'ogg';
+  if (mime.includes('mp4')) return 'mp4';
+  return 'webm'; // default
+}
+
+function nowTimestamp(): string {
+  return new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
 // Helper to construct API requests targeting the correct host (local or remote Render server)
@@ -92,29 +118,67 @@ export default function AssistantOverlay() {
   // ── Audio mode: off | mic | speaker ─────────────────────────────
   const [audioMode, setAudioMode] = useState<AudioMode>('off');
   const [micError, setMicError] = useState('');
-  const [liveText, setLiveText] = useState('');
   const [resume, setResume] = useState<ResumeData | null>(null);
   const [resumeStatus, setResumeStatus] = useState<'loading'|'loaded'|'none'>('loading');
+
+  // ── Persistent caption history ───────────────────────────────────
+  const [captions, setCaptions] = useState<CaptionEntry[]>([]);
+  const [interimCaption, setInterimCaption] = useState(''); // interim text from Web Speech API
+  const captionEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Pipeline stage status ────────────────────────────────────────
+  const [pipeline, setPipeline] = useState<PipelineStage[]>([
+    { label: 'Audio device', status: 'idle' },
+    { label: 'Capture', status: 'idle' },
+    { label: 'Send to server', status: 'idle' },
+    { label: 'Transcription', status: 'idle' },
+    { label: 'Caption', status: 'idle' },
+  ]);
 
   const [capturedScreen, setCapturedScreen] = useState<string | null>(null);
   const [screenInput, setScreenInput] = useState('');
 
   // Refs
   const recRef = useRef<any>(null);
-  const speakerRecRef = useRef<any>(null);
+  const micRecorderRef = useRef<{
+    stream?: MediaStream;
+    recorder?: MediaRecorder;
+    chunkTimeout?: any;
+  } | null>(null);
   const answeredRef = useRef<Set<string>>(new Set());
   const audioModeRef = useRef<AudioMode>('off');
   audioModeRef.current = audioMode;
 
-  const hasSoundRef = useRef(false);
   const combinedRecRef = useRef<{
     micStream?: MediaStream;
     desktopStream?: MediaStream;
     audioCtx?: AudioContext;
     recorder?: MediaRecorder;
-    soundCheckInterval?: any;
     chunkTimeout?: any;
   } | null>(null);
+
+  // ── Helpers: update a single pipeline stage ──────────────────────
+  const setStage = useCallback((label: string, status: StageStatus, detail?: string) => {
+    setPipeline(prev => prev.map(s => s.label === label ? { ...s, status, detail } : s));
+  }, []);
+
+  // ── Helpers: add a finalized caption entry ───────────────────────
+  const addCaption = useCallback((speaker: CaptionEntry['speaker'], text: string) => {
+    const entry: CaptionEntry = {
+      id: `${Date.now()}-${Math.random()}`,
+      speaker,
+      text,
+      timestamp: nowTimestamp(),
+    };
+    setCaptions(prev => [...prev, entry]);
+    setInterimCaption('');
+    setStage('Caption', 'ok', `"${text.slice(0, 40)}..."`);
+  }, [setStage]);
+
+  // ── Auto-scroll captions to bottom ──────────────────────────────
+  useEffect(() => {
+    captionEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [captions, interimCaption]);
 
   // ── Fetch user CV ───────────────────────────────────────────────
   const fetchResume = useCallback(async () => {
@@ -155,8 +219,7 @@ export default function AssistantOverlay() {
     answeredRef.current.add(key);
 
     setLoading(true);
-    setLiveText('');
-    
+
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(getApiUrl('/api/assistant/ask'), {
@@ -167,7 +230,7 @@ export default function AssistantOverlay() {
         },
         body: JSON.stringify({ question })
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.answer) {
@@ -183,13 +246,170 @@ export default function AssistantOverlay() {
   }, [pushQA]);
 
   // ─────────────────────────────────────────────────────────────────
-  // ── MICROPHONE: Web Speech API (captures your own voice) ─────────
+  // ── CORE: Send audio blob to server and handle transcription ─────
+  // ─────────────────────────────────────────────────────────────────
+  const sendToTranscribe = useCallback(async (
+    audioBlob: Blob,
+    speaker: CaptionEntry['speaker'],
+    mimeType: string
+  ) => {
+    if (audioBlob.size < 1000) {
+      console.warn('[AUDIO] Chunk too small, skipping:', audioBlob.size, 'bytes');
+      return;
+    }
+
+    console.log(`[AUDIO] Sending chunk: ${audioBlob.size} bytes, mime: ${mimeType}, speaker: ${speaker}`);
+    setStage('Send to server', 'pending', `${audioBlob.size} bytes`);
+    setStage('Transcription', 'pending');
+
+    const ext = mimeToExtension(mimeType || 'audio/webm');
+    const filename = `audio.${ext}`;
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, filename);
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl('/api/assistant/transcribe'), {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
+
+      setStage('Send to server', res.ok ? 'ok' : 'error', `HTTP ${res.status}`);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.message || `Server error ${res.status}`;
+        console.error('[TRANSCRIBE] Server error:', errMsg);
+        setStage('Transcription', 'error', errMsg);
+
+        // Surface meaningful error to user in caption area
+        if (res.status === 401) {
+          setMicError('❌ Auth error: Please log in or refresh the app.');
+        } else if (res.status === 503) {
+          setMicError('❌ ' + errMsg);
+        } else {
+          setMicError(`❌ Transcription failed: ${errMsg}`);
+        }
+        return;
+      }
+
+      const data = await res.json();
+      if (data.success && data.text) {
+        const text = data.text.trim();
+        console.log(`[TRANSCRIBE] ✅ Result (${speaker}):`, text);
+        setStage('Transcription', 'ok', `${text.length} chars`);
+
+        if (text.length > 0) {
+          addCaption(speaker, text);
+          if (text.length > 8) {
+            answerNow(text);
+            answeredRef.current = new Set();
+          }
+        }
+      } else {
+        setStage('Transcription', 'error', 'Empty response');
+        console.warn('[TRANSCRIBE] Empty or failed transcription response:', data);
+      }
+    } catch (err: any) {
+      console.error('[TRANSCRIBE] Network error:', err.message);
+      setStage('Send to server', 'error', err.message);
+      setStage('Transcription', 'error', 'Network error');
+      setMicError(`❌ Network error: ${err.message}`);
+    }
+  }, [addCaption, answerNow, setStage]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // ── MICROPHONE: Speech recognition & MediaRecorder fallback ─────
   // ─────────────────────────────────────────────────────────────────
   const startMicListening = useCallback(() => {
     setMicError('');
+    const isElectron = !!(window as any).electronAPI;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      setMicError('❌ Speech recognition unavailable. Use Chrome or the Electron desktop app.');
+
+    const startFallbackRecorder = async () => {
+      try {
+        setStage('Audio device', 'pending', 'Requesting microphone...');
+        console.log('[MIC] Requesting microphone access...');
+
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 16000,
+          },
+          video: false
+        });
+
+        const audioTracks = micStream.getAudioTracks();
+        if (audioTracks.length === 0) {
+          throw new Error('Microphone granted but no audio tracks returned.');
+        }
+        console.log(`[MIC] ✅ Mic stream acquired. Tracks: ${audioTracks.length}, label: "${audioTracks[0].label}"`);
+        setStage('Audio device', 'ok', audioTracks[0].label || 'Default mic');
+        setStage('Capture', 'pending');
+
+        const mimeType = getSupportedMimeType();
+
+        const recordCycle = () => {
+          if (audioModeRef.current !== 'mic') return;
+
+          const chunks: Blob[] = [];
+          const recorderOptions = mimeType ? { mimeType } : {};
+          const recorder = new MediaRecorder(micStream, recorderOptions);
+          micRecorderRef.current = { stream: micStream, recorder };
+
+          recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
+
+          recorder.onstop = () => {
+            if (chunks.length > 0) {
+              const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+              console.log('[MIC] Chunk ready:', blob.size, 'bytes');
+              setStage('Capture', 'ok', `${blob.size} bytes`);
+              sendToTranscribe(blob, 'Me', mimeType);
+            } else {
+              console.warn('[MIC] No audio chunks collected — microphone may be muted or silent');
+              setStage('Capture', 'error', 'No audio data (mic silent?)');
+            }
+
+            if (audioModeRef.current === 'mic') {
+              recordCycle();
+            }
+          };
+
+          recorder.start();
+          micRecorderRef.current.chunkTimeout = setTimeout(() => {
+            if (recorder.state !== 'inactive') {
+              recorder.stop();
+            }
+          }, 4000);
+        };
+
+        setAudioMode('mic');
+        audioModeRef.current = 'mic';
+        recordCycle();
+      } catch (err: any) {
+        console.error('[MIC] Error:', err.message);
+        setStage('Audio device', 'error', err.message);
+        if (err.name === 'NotAllowedError') {
+          setMicError('❌ Microphone blocked. Go to Windows Settings → Privacy → Microphone and allow access.');
+        } else if (err.name === 'NotFoundError') {
+          setMicError('❌ No microphone found. Please plug in a mic and retry.');
+        } else {
+          setMicError(`❌ Microphone error: ${err.message}`);
+        }
+        setAudioMode('off');
+      }
+    };
+
+    // In Electron, Web Speech API requires Google API keys — always use MediaRecorder + Whisper
+    if (!SR || isElectron) {
+      startFallbackRecorder();
       return;
     }
 
@@ -200,7 +420,9 @@ export default function AssistantOverlay() {
     recRef.current = rec;
 
     rec.onstart = () => {
-      console.log('[MIC] Speech recognition started');
+      console.log('[MIC] Web Speech API started');
+      setStage('Audio device', 'ok', 'Web Speech API');
+      setStage('Capture', 'ok', 'Streaming');
       setMicError('');
     };
 
@@ -214,31 +436,33 @@ export default function AssistantOverlay() {
         else interim += t;
       }
 
-      const displayText = (interim || final).trim();
-      if (displayText) setLiveText(displayText);
+      if (interim) setInterimCaption(interim);
 
-      const checkText = (interim || final).trim();
-      if (checkText.length > 8 && hasQuestionSignal(checkText)) {
-        answerNow(checkText);
-        answeredRef.current = new Set();
-      }
-
-      if (final.trim().length > 10) {
-        answerNow(final.trim());
-        answeredRef.current = new Set();
+      if (final.trim().length > 0) {
+        console.log('[MIC] Final transcript:', final.trim());
+        setStage('Transcription', 'ok', `${final.trim().length} chars`);
+        addCaption('Me', final.trim());
+        if (final.trim().length > 10) {
+          answerNow(final.trim());
+          answeredRef.current = new Set();
+        }
       }
     };
 
     rec.onerror = (e: any) => {
       console.error('[MIC] Speech recognition error:', e.error);
       if (e.error === 'not-allowed') {
-        setMicError('❌ Microphone blocked. Go to Windows Settings → Privacy → Microphone → Allow desktop apps to access your microphone.');
+        setMicError('❌ Microphone blocked. Go to Windows Settings → Privacy → Microphone → Allow desktop apps.');
         setAudioMode('off');
+        setStage('Audio device', 'error', 'Permission denied');
       } else if (e.error === 'audio-capture') {
         setMicError('❌ No microphone found. Please plug in a mic and retry.');
         setAudioMode('off');
-      } else if (e.error !== 'no-speech') {
-        console.warn('[MIC] Error:', e.error);
+        setStage('Audio device', 'error', 'No mic found');
+      } else {
+        // Fallback to MediaRecorder + Whisper on network/no-speech/service errors
+        rec.stop();
+        startFallbackRecorder();
       }
     };
 
@@ -252,21 +476,17 @@ export default function AssistantOverlay() {
     try {
       rec.start();
       setAudioMode('mic');
-      setLiveText('');
+      audioModeRef.current = 'mic';
     } catch (e) {
-      setMicError('❌ Could not start microphone. Check Windows Privacy → Microphone settings.');
-      setAudioMode('off');
+      startFallbackRecorder();
     }
-  }, [answerNow]);
+  }, [answerNow, addCaption, sendToTranscribe, setStage]);
 
   // ─────────────────────────────────────────────────────────────────
-  // ── SPEAKER/SYSTEM AUDIO: Captures BOTH mic and system speaker
-  //    using Web Audio API mixing, AnalyserNode voice detection,
-  //    and server-side OpenAI Whisper API transcription.
+  // ── SPEAKER/SYSTEM AUDIO: Captures BOTH mic and system speaker ───
   // ─────────────────────────────────────────────────────────────────
   const startSpeakerListening = useCallback(async () => {
     setMicError('');
-    hasSoundRef.current = false;
 
     try {
       const eAPI = (window as any).electronAPI;
@@ -275,13 +495,15 @@ export default function AssistantOverlay() {
       }
 
       // 1. Retrieve screen sources from Electron
+      setStage('Audio device', 'pending', 'Getting screen sources...');
       const sources = await eAPI.getScreenSources();
       const screenSource = sources.find((s: any) => s.id.startsWith('screen:')) || sources[0];
       if (!screenSource) {
         throw new Error('No screen sources found for system audio capture.');
       }
+      console.log('[SPEAKER] Using source:', screenSource.name, screenSource.id);
 
-      // 2. Request desktop audio & video stream
+      // 2. Request desktop audio stream via Electron's chromeMediaSource
       let desktopStream: MediaStream;
       try {
         desktopStream = await navigator.mediaDevices.getUserMedia({
@@ -294,34 +516,55 @@ export default function AssistantOverlay() {
           video: {
             mandatory: {
               chromeMediaSource: 'desktop',
-              chromeMediaSourceId: screenSource.id
+              chromeMediaSourceId: screenSource.id,
+              maxWidth: 1,
+              maxHeight: 1,
             }
           }
         } as any);
       } catch (err: any) {
-        console.warn('[SPEAKER] Direct desktop capture failed, trying fallback getDisplayMedia...', err);
+        console.warn('[SPEAKER] chromeMediaSource capture failed, trying getDisplayMedia fallback:', err.message);
         desktopStream = await (navigator.mediaDevices as any).getDisplayMedia({
-          audio: true,
-          video: true
+          audio: { echoCancellation: false, noiseSuppression: false },
+          video: true,
         });
       }
 
-      // Stop video tracks immediately to optimize performance
+      // Stop video tracks immediately — we only need audio
       desktopStream.getVideoTracks().forEach(track => track.stop());
+
+      // ✅ CRITICAL: Check that we actually have audio tracks
+      const desktopAudioTracks = desktopStream.getAudioTracks();
+      if (desktopAudioTracks.length === 0) {
+        throw new Error(
+          'System audio capture succeeded but returned 0 audio tracks. ' +
+          'On Windows, you must enable "Stereo Mix" in Sound settings, OR use a virtual audio cable. ' +
+          'Alternatively, use Mic-only mode for your voice.'
+        );
+      }
+      console.log(`[SPEAKER] ✅ Desktop audio tracks: ${desktopAudioTracks.length}, label: "${desktopAudioTracks[0].label}"`);
 
       // 3. Request user microphone stream
       let micStream: MediaStream;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 16000,
+          },
           video: false
         });
+        const micTracks = micStream.getAudioTracks();
+        console.log(`[SPEAKER] ✅ Mic tracks: ${micTracks.length}, label: "${micTracks[0]?.label}"`);
       } catch (err: any) {
         desktopStream.getTracks().forEach(t => t.stop());
         throw new Error('Could not access microphone: ' + (err.message || err));
       }
 
-      // 4. Create Web Audio context & mix both mic + speaker streams
+      setStage('Audio device', 'ok', `Speaker + Mic`);
+
+      // 4. Create Web Audio context & mix both streams into one destination
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
@@ -332,106 +575,47 @@ export default function AssistantOverlay() {
       const micSourceNode = audioCtx.createMediaStreamSource(micStream);
       const desktopSourceNode = audioCtx.createMediaStreamSource(desktopStream);
 
+      // Boost desktop audio slightly (interviewer's voice)
+      const desktopGain = audioCtx.createGain();
+      desktopGain.gain.value = 1.5;
+      desktopSourceNode.connect(desktopGain);
+      desktopGain.connect(dest);
       micSourceNode.connect(dest);
-      desktopSourceNode.connect(dest);
 
-      // 5. Connect an analyser node to detect volume activity
-      const analyser = audioCtx.createAnalyser();
-      dest.connect(analyser);
+      combinedRecRef.current = { micStream, desktopStream, audioCtx };
 
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+      // 5. Get the best supported MIME type
+      const mimeType = getSupportedMimeType();
 
-      const soundCheckInterval = setInterval(() => {
-        if (audioModeRef.current !== 'speaker') {
-          clearInterval(soundCheckInterval);
-          return;
-        }
-        analyser.getByteTimeDomainData(dataArray);
-        for (let i = 0; i < bufferLength; i++) {
-          const amplitude = Math.abs(dataArray[i] - 128);
-          if (amplitude > 2) { // Lowered threshold to 2 for maximum sensitivity
-            if (!hasSoundRef.current) {
-              console.log('[SPEAKER] Sound activity detected! Amplitude:', amplitude);
-            }
-            hasSoundRef.current = true;
-            break;
-          }
-        }
-      }, 100);
-
-      // Save references for clean stopping later
-      combinedRecRef.current = {
-        micStream,
-        desktopStream,
-        audioCtx,
-        soundCheckInterval
-      };
-
-      // 6. Define transcription uploader function
-      const sendToTranscribe = async (audioBlob: Blob) => {
-        console.log('[COMBINED] Sending audio chunk to transcribe, size:', audioBlob.size);
-        try {
-          const formData = new FormData();
-          formData.append('audio', audioBlob, 'audio.webm');
-
-          const token = localStorage.getItem('token');
-          const res = await fetch(getApiUrl('/api/assistant/transcribe'), {
-            method: 'POST',
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {})
-            },
-            body: formData
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.text) {
-              const text = data.text.trim();
-              if (text.length > 0) {
-                setLiveText(text);
-                console.log('[COMBINED] Transcribed text:', text);
-
-                // Check for question signals or minimum substantial length
-                if (text.length > 8 && (hasQuestionSignal(text) || text.length > 30)) {
-                  answerNow(text);
-                  answeredRef.current = new Set();
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.error('[COMBINED] Transcribe failed:', err);
-        }
-      };
-
-      // 7. Define chunked recording cycle loop
+      // 6. Chunked recording cycle
       const recordCycle = () => {
         if (audioModeRef.current !== 'speaker') return;
 
         const chunks: Blob[] = [];
-        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+        const recorderOptions = mimeType ? { mimeType } : {};
+        const recorder = new MediaRecorder(dest.stream, recorderOptions);
 
         if (combinedRecRef.current) {
           combinedRecRef.current.recorder = recorder;
         }
 
+        setStage('Capture', 'pending');
+
         recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            chunks.push(e.data);
-          }
+          if (e.data && e.data.size > 0) chunks.push(e.data);
         };
 
         recorder.onstop = () => {
           if (chunks.length > 0) {
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            if (hasSoundRef.current) {
-              hasSoundRef.current = false; // Reset threshold for next cycle
-              sendToTranscribe(blob);
-            }
+            const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+            console.log('[SPEAKER] Chunk ready:', blob.size, 'bytes');
+            setStage('Capture', 'ok', `${blob.size} bytes`);
+            sendToTranscribe(blob, 'Combined', mimeType);
+          } else {
+            console.warn('[SPEAKER] No audio chunks — check system audio is playing');
+            setStage('Capture', 'error', 'No audio data captured');
           }
 
-          // Restart cycle if mode is still speaker
           if (audioModeRef.current === 'speaker') {
             recordCycle();
           }
@@ -444,28 +628,36 @@ export default function AssistantOverlay() {
             if (recorder.state !== 'inactive') {
               recorder.stop();
             }
-          }, 5000); // 5 second segments
+          }, 4000);
         }
       };
 
-      recordCycle();
       setAudioMode('speaker');
-      setLiveText('');
+      audioModeRef.current = 'speaker';
+      setStage('Capture', 'ok', 'Combined stream recording');
+      recordCycle();
+
     } catch (err: any) {
-      console.error('[SPEAKER] Setup failed:', err);
+      console.error('[SPEAKER] Setup failed:', err.message || err);
+      setStage('Audio device', 'error', err.message);
       setMicError(`❌ Speaker capture failed: ${err.message || err}`);
       setAudioMode('off');
     }
-  }, [answerNow]);
+  }, [answerNow, addCaption, sendToTranscribe, setStage]);
 
   // ── Stop all audio ──────────────────────────────────────────────
   const stopListening = useCallback(() => {
     recRef.current?.stop();
     recRef.current = null;
-    if (speakerRecRef.current) {
-      speakerRecRef.current.rec?.stop();
-      speakerRecRef.current.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-      speakerRecRef.current = null;
+
+    if (micRecorderRef.current) {
+      const ref = micRecorderRef.current;
+      if (ref.recorder && ref.recorder.state !== 'inactive') {
+        try { ref.recorder.stop(); } catch (_) {}
+      }
+      ref.stream?.getTracks().forEach(t => t.stop());
+      if (ref.chunkTimeout) clearTimeout(ref.chunkTimeout);
+      micRecorderRef.current = null;
     }
 
     if (combinedRecRef.current) {
@@ -478,14 +670,15 @@ export default function AssistantOverlay() {
       if (ref.audioCtx && ref.audioCtx.state !== 'closed') {
         ref.audioCtx.close().catch(console.error);
       }
-      if (ref.soundCheckInterval) clearInterval(ref.soundCheckInterval);
       if (ref.chunkTimeout) clearTimeout(ref.chunkTimeout);
       combinedRecRef.current = null;
     }
 
     setAudioMode('off');
-    setLiveText('');
+    setInterimCaption('');
     answeredRef.current = new Set();
+    // NOTE: captions[] is NOT cleared — keeps history visible after stopping
+    setPipeline(prev => prev.map(s => ({ ...s, status: 'idle', detail: undefined })));
   }, []);
 
   // ── Screen capture ───────────────────────────────────────────────
@@ -535,22 +728,24 @@ export default function AssistantOverlay() {
       eAPI.onNavigatePrev?.(() => setIdx(p => Math.max(0, p - 1)));
       eAPI.onNavigateNext?.(() => setIdx(p => Math.min(history.length - 1, p + 1)));
 
-      // Log media permission status for debugging
       eAPI.checkMediaPermissions?.().then((result: any) => {
         console.log('[PrepAI] Electron media permissions:', result);
       });
     }
 
+    // Log MIME support for diagnostics
+    const mime = getSupportedMimeType();
+    console.log('[PrepAI] Best audio MIME type:', mime || '(browser default)');
+    console.log('[PrepAI] SpeechRecognition available:', !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
+    console.log('[PrepAI] getUserMedia available:', !!(navigator.mediaDevices?.getUserMedia));
+
     pushQA({
-      question: 'Welcome',
-      text: '✅ PrepAI ready!\n🎙 Click mic for YOUR voice | 🔊 Click again for INTERVIEWER audio\n📸 Ctrl+Enter to capture screen | Type below to ask anything'
+      question: 'PrepAI ready',
+      text: '🎙 Click mic for YOUR voice | 🔊 Click again for INTERVIEWER + your audio\n📸 Ctrl+Enter to capture screen | Type below to ask anything\n\n💡 Captions will appear in the left panel with timestamps. AI answers appear below.',
     });
 
     return () => {
       recRef.current?.stop();
-      speakerRecRef.current?.rec?.stop();
-      speakerRecRef.current?.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-
       if (combinedRecRef.current) {
         const ref = combinedRecRef.current;
         if (ref.recorder && ref.recorder.state !== 'inactive') {
@@ -561,7 +756,6 @@ export default function AssistantOverlay() {
         if (ref.audioCtx && ref.audioCtx.state !== 'closed') {
           ref.audioCtx.close().catch(console.error);
         }
-        if (ref.soundCheckInterval) clearInterval(ref.soundCheckInterval);
         if (ref.chunkTimeout) clearTimeout(ref.chunkTimeout);
       }
     };
@@ -569,6 +763,21 @@ export default function AssistantOverlay() {
 
   const current = history[idx];
   const isListening = audioMode !== 'off';
+
+  // ── Stage icon ───────────────────────────────────────────────────
+  const StageIcon = ({ status }: { status: StageStatus }) => {
+    if (status === 'ok') return <CheckCircle2 size={8} style={{ color: '#22c55e', flexShrink: 0 }} />;
+    if (status === 'error') return <AlertCircle size={8} style={{ color: '#ef4444', flexShrink: 0 }} />;
+    if (status === 'pending') return <Radio size={8} style={{ color: '#f59e0b', flexShrink: 0, animation: 'pulse 1s ease infinite' }} />;
+    return <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3f3f46', display: 'inline-block', flexShrink: 0 }} />;
+  };
+
+  // ── Speaker color per label ──────────────────────────────────────
+  const speakerColor = (speaker: CaptionEntry['speaker']) => {
+    if (speaker === 'Me') return '#818cf8';
+    if (speaker === 'Interviewer') return '#34d399';
+    return '#f59e0b';
+  };
 
   // ─── RENDER ─────────────────────────────────────────────────────
   return (
@@ -597,7 +806,7 @@ export default function AssistantOverlay() {
               transition: 'background .3s',
               boxShadow: audioMode !== 'off' ? '0 0 6px currentColor' : 'none'
             }} />
-            {audioMode === 'off' ? 'LIVE' : audioMode === 'mic' ? 'MIC ON' : 'COMBINED ON'}
+            {audioMode === 'off' ? 'OFF' : audioMode === 'mic' ? 'MIC ON' : 'COMBINED ON'}
           </span>
 
           {/* CV status pill */}
@@ -657,99 +866,173 @@ export default function AssistantOverlay() {
 
         {/* Content card with Row layout */}
         <div style={{ ...G, borderRadius: 16, flex: 1, display: 'flex', flexDirection: 'row', padding: '10px 12px', overflow: 'hidden', gap: 12 }}>
-          
-          {/* LEFT COLUMN: Speaker & AI Output (60% width) */}
+
+          {/* LEFT COLUMN: Captions + AI Output (60% width) */}
           <div style={{ flex: 1.6, display: 'flex', flexDirection: 'column', minWidth: 0, borderRight: '1px solid rgba(63,63,70,.35)', paddingRight: 12, gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              <Sparkles size={9} style={{ color: '#818cf8' }} /> Speaker / AI Answer
+            
+            {/* Caption history header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                <Sparkles size={9} style={{ color: '#818cf8' }} /> Live Captions
+                {captions.length > 0 && (
+                  <span style={{ background: 'rgba(99,102,241,.2)', color: '#a5b4fc', padding: '0 5px', borderRadius: 999, fontSize: 8 }}>{captions.length}</span>
+                )}
+              </div>
+              {captions.length > 0 && (
+                <button
+                  onClick={() => setCaptions([])}
+                  style={{ fontSize: 8, color: '#52525b', background: 'none', border: 'none', cursor: 'pointer', padding: '1px 4px' }}
+                >Clear</button>
+              )}
             </div>
 
-            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Live Speaker transcript (combined audio) */}
-              {audioMode === 'speaker' && (liveText || isListening) && (
-                <div style={{ padding: '6px 8px', background: 'rgba(52,211,153,.06)', borderRadius: 8, border: '1px solid rgba(52,211,153,.15)' }}>
-                  <p style={{ margin: 0, fontSize: 10.5, color: '#d4d4d8', fontStyle: 'italic', lineHeight: 1.35 }}>
-                    {liveText || 'Hearing mic & speaker...'}
-                    <span style={{ display: 'inline-block', width: 2, height: 11, background: '#86efac', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
+            {/* Error banner */}
+            {micError && (
+              <div style={{ padding: '5px 8px', background: 'rgba(248,113,113,.08)', borderRadius: 8, border: '1px solid rgba(248,113,113,.2)', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                <AlertCircle size={10} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
+                <p style={{ margin: 0, fontSize: 9.5, color: '#fecaca', lineHeight: 1.35 }}>
+                  {micError}
+                </p>
+              </div>
+            )}
+
+            {/* Caption scroll area */}
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0 }}>
+
+              {/* Empty state */}
+              {captions.length === 0 && !interimCaption && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 4, opacity: 0.4 }}>
+                  <Mic size={18} style={{ color: '#52525b' }} />
+                  <p style={{ margin: 0, fontSize: 9, color: '#52525b', textAlign: 'center', lineHeight: 1.4 }}>
+                    {audioMode === 'off'
+                      ? 'Click the mic button to start capturing audio'
+                      : 'Listening… speak now'}
                   </p>
                 </div>
               )}
 
-              {/* AI Answer & Code block */}
+              {/* Caption entries */}
+              {captions.map(c => (
+                <div key={c.id} style={{ padding: '4px 7px', background: 'rgba(255,255,255,.03)', borderRadius: 7, border: `1px solid rgba(${speakerColor(c.speaker) === '#818cf8' ? '129,140,248' : speakerColor(c.speaker) === '#34d399' ? '52,211,153' : '245,158,11'},.12)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: speakerColor(c.speaker) }}>{c.speaker}</span>
+                    <span style={{ fontSize: 8, color: '#3f3f46' }}>{c.timestamp}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 10, color: '#d4d4d8', lineHeight: 1.4 }}>{c.text}</p>
+                </div>
+              ))}
+
+              {/* Interim (live) caption */}
+              {interimCaption && (
+                <div style={{ padding: '4px 7px', background: 'rgba(99,102,241,.06)', borderRadius: 7, border: '1px solid rgba(99,102,241,.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: '#818cf8' }}>Me (live)</span>
+                    <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: '#818cf8', animation: 'pulse 1s ease infinite' }} />
+                  </div>
+                  <p style={{ margin: 0, fontSize: 10, color: '#a5b4fc', fontStyle: 'italic', lineHeight: 1.4 }}>{interimCaption}</p>
+                </div>
+              )}
+
+              {/* Speaker mode interim */}
+              {audioMode === 'speaker' && !interimCaption && captions.length > 0 && (
+                <div style={{ padding: '3px 7px', borderRadius: 7, border: '1px dashed rgba(52,211,153,.2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: '#22c55e', animation: 'pulse 1s ease infinite' }} />
+                  <p style={{ margin: 0, fontSize: 9, color: '#52525b', fontStyle: 'italic' }}>Capturing mic + speaker…</p>
+                </div>
+              )}
+
+              <div ref={captionEndRef} />
+            </div>
+
+            {/* AI Answer area */}
+            <div style={{ borderTop: '1px solid rgba(63,63,70,.3)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '45%', overflow: 'auto' }}>
+              <div style={{ fontSize: 8.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Sparkles size={8} /> AI Answer
+              </div>
               {loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
-                  <Loader2 size={14} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
-                  <span style={{ fontSize: 10, color: '#71717a' }}>Generating...</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Loader2 size={12} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
+                  <span style={{ fontSize: 9.5, color: '#71717a' }}>Generating…</span>
                 </div>
               ) : current ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {/* Code block */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {current.code && (
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontSize: 8.5, fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                        <Code2 size={9} /> Code
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 3, fontSize: 8, fontWeight: 700, color: '#34d399', textTransform: 'uppercase' }}>
+                        <Code2 size={8} /> Code
                       </div>
-                      <pre style={{ margin: 0, fontSize: 9.5, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 8, padding: '8px 10px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.5, whiteSpace: 'pre' }}>
+                      <pre style={{ margin: 0, fontSize: 9, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 7, padding: '6px 9px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.5, whiteSpace: 'pre' }}>
                         <code>{current.code}</code>
                       </pre>
                     </div>
                   )}
-
-                  {/* Text answer */}
-                  <div>
-                    <p style={{ margin: 0, fontSize: 10.5, color: '#e4e4e7', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
-                      {current.text}
-                    </p>
-                  </div>
+                  <p style={{ margin: 0, fontSize: 10, color: '#e4e4e7', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                    {current.text}
+                  </p>
                 </div>
               ) : null}
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Candidate & Input (40% width) */}
+          {/* RIGHT COLUMN: Pipeline Status + Input (40% width) */}
           <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', minWidth: 0, gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              <Mic size={9} /> Candidate / User Input
-            </div>
             
-            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Live Candidate transcript */}
-              {audioMode === 'mic' && (liveText || isListening) && (
-                <div style={{ padding: '6px 8px', background: 'rgba(99,102,241,.06)', borderRadius: 8, border: '1px solid rgba(99,102,241,.15)' }}>
-                  <p style={{ margin: 0, fontSize: 10.5, color: '#d4d4d8', fontStyle: 'italic', lineHeight: 1.35 }}>
-                    {liveText || 'Speak now...'}
-                    <span style={{ display: 'inline-block', width: 2, height: 11, background: '#818cf8', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'middle' }} />
-                  </p>
+            {/* Pipeline Status Panel */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 8.5, fontWeight: 700, color: '#71717a', textTransform: 'uppercase', letterSpacing: '.06em' }}>Pipeline</div>
+              {pipeline.map(stage => (
+                <div key={stage.label} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 6px', borderRadius: 5,
+                  background: stage.status === 'error' ? 'rgba(239,68,68,.07)' : stage.status === 'ok' ? 'rgba(34,197,94,.05)' : stage.status === 'pending' ? 'rgba(245,158,11,.07)' : 'transparent'
+                }}>
+                  <StageIcon status={stage.status} />
+                  <span style={{ fontSize: 9, color: stage.status === 'error' ? '#fca5a5' : stage.status === 'ok' ? '#86efac' : stage.status === 'pending' ? '#fbbf24' : '#3f3f46', flex: 1 }}>
+                    {stage.label}
+                  </span>
+                  {stage.detail && (
+                    <span style={{ fontSize: 7.5, color: '#52525b', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stage.detail}>
+                      {stage.detail}
+                    </span>
+                  )}
                 </div>
-              )}
+              ))}
+            </div>
 
+            {/* Instruction hint */}
+            <div style={{ fontSize: 8.5, color: '#3f3f46', lineHeight: 1.4, borderTop: '1px solid rgba(63,63,70,.25)', paddingTop: 5 }}>
+              {audioMode === 'off' && '🎙 = your mic  →  🔊 = mic+speaker'}
+              {audioMode === 'mic' && '🎙 Mic active. Click again for speaker mode.'}
+              {audioMode === 'speaker' && '🎙+🔊 Combined. Click to stop.'}
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {/* Selected QA question */}
-              {current && current.question !== 'Welcome' && (
-                <div style={{ padding: '8px 10px', background: 'rgba(255,255,255,.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,.05)' }}>
-                  <p style={{ margin: 0, fontSize: 11, color: '#e4e4e7', fontWeight: 600, lineHeight: 1.4 }}>
-                    ❓ {current.question}
+              {current && (
+                <div style={{ padding: '7px 9px', background: 'rgba(255,255,255,.03)', borderRadius: 9, border: '1px solid rgba(255,255,255,.05)' }}>
+                  <p style={{ margin: 0, fontSize: 9, color: '#71717a', fontWeight: 600, marginBottom: 2 }}>❓ Last Q</p>
+                  <p style={{ margin: 0, fontSize: 10, color: '#e4e4e7', fontWeight: 600, lineHeight: 1.4 }}>
+                    {current.question}
                   </p>
                 </div>
               )}
 
               {/* Screen capture input prompt */}
               {capturedScreen !== null && (
-                <div style={{ padding: '8px 10px', background: 'rgba(99,102,241,.1)', borderRadius: 10, border: '1px solid rgba(99,102,241,.25)' }}>
-                  <p style={{ fontSize: 10, color: '#a5b4fc', fontWeight: 600, margin: '0 0 6px 0' }}>📸 Screen captured! What do you need?</p>
-                  <form onSubmit={submitScreenInput} style={{ display: 'flex', gap: 6 }}>
+                <div style={{ padding: '7px 9px', background: 'rgba(99,102,241,.1)', borderRadius: 9, border: '1px solid rgba(99,102,241,.25)' }}>
+                  <p style={{ fontSize: 9, color: '#a5b4fc', fontWeight: 600, margin: '0 0 5px 0' }}>📸 Screen captured! What do you need?</p>
+                  <form onSubmit={submitScreenInput} style={{ display: 'flex', gap: 5 }}>
                     <input
                       autoFocus
                       type="text" value={screenInput} onChange={e => setScreenInput(e.target.value)}
                       placeholder='e.g. "Java code", "explain this"'
-                      style={{ flex: 1, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#e4e4e7', outline: 'none', fontFamily: 'inherit' }}
+                      style={{ flex: 1, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 5, padding: '3px 7px', fontSize: 9.5, color: '#e4e4e7', outline: 'none', fontFamily: 'inherit' }}
                     />
-                    <button type="submit" style={{ padding: '4px 10px', borderRadius: 6, background: '#6366f1', color: '#fff', border: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Go</button>
+                    <button type="submit" style={{ padding: '3px 8px', borderRadius: 5, background: '#6366f1', color: '#fff', border: 'none', fontSize: 9, fontWeight: 700, cursor: 'pointer' }}>Go</button>
                   </form>
                 </div>
               )}
             </div>
 
-            {/* Manual text input inside the right column */}
+            {/* Manual text input */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', alignItems: 'center', position: 'relative', marginTop: 4 }}>
               <input
                 type="text" value={inputVal} onChange={e => setInputVal(e.target.value)}
@@ -801,7 +1084,11 @@ export default function AssistantOverlay() {
           </button>
         </div>
 
-        {/* Audio mode hint */}
+        {/* Caption count summary */}
+        <span style={{ fontSize: 8.5, color: '#3f3f46', flexShrink: 0 }}>
+          {captions.length > 0 ? `${captions.length} caption${captions.length !== 1 ? 's' : ''} captured` : 'No captions yet'}
+        </span>
+
         <span style={{ fontSize: 9, color: '#3f3f46', flexShrink: 0, marginLeft: 'auto' }}>
           {audioMode === 'off' ? '🎙=mic 🔊=combined' : audioMode === 'mic' ? '🎙 Mic active' : '🎙+🔊 Combined active'}
         </span>
@@ -810,7 +1097,7 @@ export default function AssistantOverlay() {
       <style>{`
         @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
       `}</style>
     </div>
   );
