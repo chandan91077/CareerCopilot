@@ -93,41 +93,74 @@ function nowTimestamp(): string {
   return new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
-const HALLUCINATED_PHRASES = [
-  'thank you',
-  'thank you.',
-  'thank you very much',
-  'thanks',
-  'thanks for watching',
-  'subtitles by',
-  'amara.org',
-  'kampen',
-  'bye',
-  'goodbye',
-  'subscribe',
-  'like and subscribe',
-  'uh-huh',
-  'uh',
-  'um',
-  'yeah',
-  'okay',
-  'ok',
+const HALLUCINATING_PATTERNS = [
+  /thank(s|\s+you)?(\s+for\s+\w+)?/i,
+  /subtitles?\s+by/i,
+  /amara\.org/i,
+  /good\s+(morning|afternoon|evening|night)/i,
+  /subscribe/i,
+  /like\s+and\s+subscribe/i,
+  /kampen/i,
+  /uh-?huh/i,
+  /bye/i,
+  /see\s+you/i,
+  /welcome\s+back/i,
+  /good morning,?\s*girl/i,
+  /thanks?\s+for\s+watching/i,
 ];
 
 function isHallucinationOrFiller(text: string): boolean {
-  const normalized = text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').trim();
-  if (!normalized || normalized.length < 2) return true;
-  return HALLUCINATED_PHRASES.includes(normalized);
+  const clean = text.trim();
+  if (!clean || clean.length < 2) return true;
+  return HALLUCINATING_PATTERNS.some(r => r.test(clean));
 }
 
 function isSubstantiveQuestion(text: string): boolean {
   if (isHallucinationOrFiller(text)) return false;
-  const normalized = text.trim().toLowerCase();
-  if (normalized.length < 14) {
-    const keywords = ['what', 'why', 'how', 'when', 'who', 'code', 'java', 'sql', 'react', 'node', 'api', 'bug', 'test', 'db', 'explain', 'tell', 'define'];
-    return keywords.some(k => normalized.includes(k));
+  const clean = text.trim();
+  if (clean.endsWith('?')) return true;
+
+  const keywords = [
+    'what', 'why', 'how', 'when', 'where', 'who', 'which',
+    'can', 'could', 'would', 'should', 'is', 'are', 'do', 'does',
+    'explain', 'tell', 'describe', 'define', 'write', 'implement',
+    'code', 'design', 'architecture', 'system', 'database', 'sql',
+    'java', 'python', 'react', 'node', 'api', 'bug', 'algorithm',
+    'complexity', 'difference', 'compare', 'advantage', 'disadvantage'
+  ];
+  const lower = clean.toLowerCase();
+  return keywords.some(k => lower.includes(k));
+}
+
+function getTodayDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getTodayDisplayDate(): string {
+  return `Today (${new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' })})`;
+}
+
+interface DayGroup {
+  dateKey: string;
+  displayDate: string;
+  qas: QA[];
+}
+
+function groupHistoryByDay(history: QA[]): DayGroup[] {
+  if (history.length === 0) return [];
+  const map = new Map<string, DayGroup>();
+
+  for (const item of history) {
+    const key = item.dateKey || getTodayDateKey();
+    const label = item.displayDate || key;
+    if (!map.has(key)) {
+      map.set(key, { dateKey: key, displayDate: label, qas: [] });
+    }
+    map.get(key)!.qas.push(item);
   }
-  return true;
+
+  return Array.from(map.values());
 }
 
 // Helper to construct API requests targeting the correct host (local or remote Render server)
@@ -141,13 +174,21 @@ const getApiUrl = (path: string) => {
   return `${normalizedBase}${normalizedPath}`;
 };
 
-interface QA { question: string; text: string; code?: string; }
+interface QA {
+  id: string;
+  question: string;
+  text: string;
+  code?: string;
+  timestamp: string;
+  dateKey: string;
+  displayDate: string;
+}
 
 type AudioMode = 'off' | 'mic' | 'speaker';
 
 export default function AssistantOverlay() {
   const [history, setHistory] = useState<QA[]>([]);
-  const [idx, setIdx] = useState(0);
+  const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [opacity, setOpacity] = useState(1.0);
   const [inputVal, setInputVal] = useState('');
@@ -162,6 +203,7 @@ export default function AssistantOverlay() {
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
   const [interimCaption, setInterimCaption] = useState(''); // interim text from Web Speech API
   const captionEndRef = useRef<HTMLDivElement>(null);
+  const answerFeedEndRef = useRef<HTMLDivElement>(null);
 
   // ── Pipeline stage status ────────────────────────────────────────
   const [pipeline, setPipeline] = useState<PipelineStage[]>([
@@ -217,6 +259,11 @@ export default function AssistantOverlay() {
     captionEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [captions, interimCaption]);
 
+  // ── Auto-scroll AI answer feed to bottom ─────────────────────────
+  useEffect(() => {
+    answerFeedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history, dayIdx]);
+
   // ── Fetch user CV ───────────────────────────────────────────────
   const fetchResume = useCallback(async () => {
     try {
@@ -238,10 +285,21 @@ export default function AssistantOverlay() {
   }, []);
 
   // ── Push answer ─────────────────────────────────────────────────
-  const pushQA = useCallback((qa: QA) => {
+  const pushQA = useCallback((newQa: { question: string; text: string; code?: string }) => {
+    const qa: QA = {
+      id: `${Date.now()}-${Math.random()}`,
+      question: newQa.question,
+      text: newQa.text,
+      code: newQa.code,
+      timestamp: nowTimestamp(),
+      dateKey: getTodayDateKey(),
+      displayDate: getTodayDisplayDate(),
+    };
+
     setHistory(prev => {
       const next = [...prev, qa];
-      setIdx(next.length - 1);
+      const groups = groupHistoryByDay(next);
+      setDayIdx(groups.length - 1);
       return next;
     });
     setLoading(false);
@@ -763,8 +821,8 @@ export default function AssistantOverlay() {
     const eAPI = (window as any).electronAPI;
     if (eAPI) {
       eAPI.onScreenCapture?.((b64: string) => handleCapture(b64));
-      eAPI.onNavigatePrev?.(() => setIdx(p => Math.max(0, p - 1)));
-      eAPI.onNavigateNext?.(() => setIdx(p => Math.min(history.length - 1, p + 1)));
+      eAPI.onNavigatePrev?.(() => setDayIdx((p: number) => Math.max(0, p - 1)));
+      eAPI.onNavigateNext?.(() => setDayIdx((p: number) => Math.min(dayGroups.length - 1, p + 1)));
 
       eAPI.checkMediaPermissions?.().then((result: any) => {
         console.log('[PrepAI] Electron media permissions:', result);
@@ -799,7 +857,9 @@ export default function AssistantOverlay() {
     };
   }, []);
 
-  const current = history[idx];
+  const dayGroups = groupHistoryByDay(history);
+  const activeDay = dayGroups[dayIdx] || (dayGroups.length > 0 ? dayGroups[dayGroups.length - 1] : null);
+  const latestQA = activeDay && activeDay.qas.length > 0 ? activeDay.qas[activeDay.qas.length - 1] : null;
   const isListening = audioMode !== 'off';
 
   // ── Stage icon ───────────────────────────────────────────────────
@@ -982,33 +1042,56 @@ export default function AssistantOverlay() {
               <div ref={captionEndRef} />
             </div>
 
-            {/* AI Answer area */}
-            <div style={{ borderTop: '1px solid rgba(63,63,70,.3)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '45%', overflow: 'auto' }}>
-              <div style={{ fontSize: 8.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: 3 }}>
-                <Sparkles size={8} /> AI Answer
+            {/* AI Answer area (Single continuous scrollable feed per session/day) */}
+            <div style={{ borderTop: '1px solid rgba(63,63,70,.3)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 6, flex: 1.2, minHeight: 0 }}>
+              <div style={{ fontSize: 8.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Sparkles size={8} /> AI Answers {activeDay ? `(${activeDay.qas.length})` : ''}
+                </span>
+                {activeDay && (
+                  <span style={{ fontSize: 7.5, color: '#71717a', textTransform: 'none' }}>{activeDay.displayDate}</span>
+                )}
               </div>
-              {loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Loader2 size={12} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
-                  <span style={{ fontSize: 9.5, color: '#71717a' }}>Generating…</span>
-                </div>
-              ) : current ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {current.code && (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 3, fontSize: 8, fontWeight: 700, color: '#34d399', textTransform: 'uppercase' }}>
-                        <Code2 size={8} /> Code
+
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0, paddingRight: 2 }}>
+                {loading && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: 'rgba(99,102,241,.1)', borderRadius: 6 }}>
+                    <Loader2 size={12} style={{ color: '#6366f1', animation: 'spin 0.6s linear infinite' }} />
+                    <span style={{ fontSize: 9.5, color: '#a5b4fc' }}>Generating AI answer…</span>
+                  </div>
+                )}
+
+                {activeDay && activeDay.qas.length > 0 ? (
+                  activeDay.qas.map(qa => (
+                    <div key={qa.id} style={{ padding: '6px 8px', background: 'rgba(255,255,255,.03)', borderRadius: 8, border: '1px solid rgba(129,140,248,.15)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#a5b4fc' }}>❓ {qa.question}</span>
+                        <span style={{ fontSize: 7.5, color: '#52525b' }}>{qa.timestamp}</span>
                       </div>
-                      <pre style={{ margin: 0, fontSize: 9, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 7, padding: '6px 9px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.5, whiteSpace: 'pre' }}>
-                        <code>{current.code}</code>
-                      </pre>
+                      {qa.code && (
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 2, fontSize: 8, fontWeight: 700, color: '#34d399', textTransform: 'uppercase' }}>
+                            <Code2 size={8} /> Code
+                          </div>
+                          <pre style={{ margin: 0, fontSize: 9, color: '#6ee7b7', background: 'rgba(0,0,0,.55)', borderRadius: 6, padding: '5px 8px', border: '1px solid rgba(52,211,153,.15)', overflowX: 'auto', fontFamily: "'Fira Code',monospace", lineHeight: 1.4, whiteSpace: 'pre' }}>
+                            <code>{qa.code}</code>
+                          </pre>
+                        </div>
+                      )}
+                      <p style={{ margin: 0, fontSize: 9.5, color: '#e4e4e7', lineHeight: 1.45, whiteSpace: 'pre-line' }}>
+                        {qa.text}
+                      </p>
                     </div>
-                  )}
-                  <p style={{ margin: 0, fontSize: 10, color: '#e4e4e7', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
-                    {current.text}
-                  </p>
-                </div>
-              ) : null}
+                  ))
+                ) : !loading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, opacity: 0.4 }}>
+                    <p style={{ margin: 0, fontSize: 9, color: '#71717a', textAlign: 'center' }}>
+                      Ask a technical question to see AI answers here
+                    </p>
+                  </div>
+                ) : null}
+                <div ref={answerFeedEndRef} />
+              </div>
             </div>
           </div>
 
@@ -1043,12 +1126,12 @@ export default function AssistantOverlay() {
             </div>
 
             <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Selected QA question */}
-              {current && (
+              {/* Latest Q preview */}
+              {latestQA && (
                 <div style={{ padding: '7px 9px', background: 'rgba(255,255,255,.03)', borderRadius: 9, border: '1px solid rgba(255,255,255,.05)' }}>
-                  <p style={{ margin: 0, fontSize: 9, color: '#71717a', fontWeight: 600, marginBottom: 2 }}>❓ Last Q</p>
+                  <p style={{ margin: 0, fontSize: 9, color: '#71717a', fontWeight: 600, marginBottom: 2 }}>❓ Latest Q</p>
                   <p style={{ margin: 0, fontSize: 10, color: '#e4e4e7', fontWeight: 600, lineHeight: 1.4 }}>
-                    {current.question}
+                    {latestQA.question}
                   </p>
                 </div>
               )}
@@ -1109,15 +1192,15 @@ export default function AssistantOverlay() {
       {/* ══ BOTTOM BAR ════════════════════════════════════════════ */}
       <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', gap: 10, padding: '5px 14px', WebkitAppRegion: 'no-drag' } as any}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-          <button onClick={() => setIdx(p => Math.max(0, p - 1))} disabled={idx <= 0}
-            style={{ padding: 3, border: 'none', background: 'transparent', color: idx <= 0 ? '#3f3f46' : '#71717a', cursor: idx <= 0 ? 'default' : 'pointer' }}>
+          <button onClick={() => setDayIdx(p => Math.max(0, p - 1))} disabled={dayIdx <= 0}
+            style={{ padding: 3, border: 'none', background: 'transparent', color: dayIdx <= 0 ? '#3f3f46' : '#71717a', cursor: dayIdx <= 0 ? 'default' : 'pointer' }}>
             <ChevronLeft size={13} />
           </button>
-          <span style={{ fontSize: 9, color: '#52525b', fontWeight: 700, padding: '0 4px' }}>
-            {history.length > 0 ? `${idx + 1}/${history.length}` : '0/0'}
+          <span style={{ fontSize: 9, color: '#a5b4fc', fontWeight: 700, padding: '0 4px' }}>
+            {dayGroups.length > 0 ? `${activeDay?.displayDate || 'Today'} (${dayIdx + 1}/${dayGroups.length})` : '0/0'}
           </span>
-          <button onClick={() => setIdx(p => Math.min(history.length - 1, p + 1))} disabled={idx >= history.length - 1}
-            style={{ padding: 3, border: 'none', background: 'transparent', color: idx >= history.length - 1 ? '#3f3f46' : '#71717a', cursor: idx >= history.length - 1 ? 'default' : 'pointer' }}>
+          <button onClick={() => setDayIdx(p => Math.min(dayGroups.length - 1, p + 1))} disabled={dayIdx >= dayGroups.length - 1}
+            style={{ padding: 3, border: 'none', background: 'transparent', color: dayIdx >= dayGroups.length - 1 ? '#3f3f46' : '#71717a', cursor: dayIdx >= dayGroups.length - 1 ? 'default' : 'pointer' }}>
             <ChevronRight size={13} />
           </button>
         </div>
