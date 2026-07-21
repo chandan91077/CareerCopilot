@@ -105,6 +105,45 @@ async function captureActiveScreenBase64() {
   throw new Error("No active screen captures found.");
 }
 
+let SetWindowDisplayAffinity = null;
+try {
+  const koffi = require('koffi');
+  const user32 = koffi.load('user32.dll');
+  SetWindowDisplayAffinity = user32.func('bool SetWindowDisplayAffinity(uint64 hWnd, uint32 dwAffinity)');
+  console.log('[WIN32] Loaded SetWindowDisplayAffinity via koffi FFI');
+} catch (e) {
+  console.warn('[WIN32] Could not load koffi FFI:', e.message);
+}
+
+function applyWin32ContentProtection(win) {
+  if (!win || win.isDestroyed()) return;
+
+  try {
+    win.setContentProtection(true);
+    win.setAlwaysOnTop(true, 'screen-saver');
+  } catch (_) {}
+
+  if (SetWindowDisplayAffinity && process.platform === 'win32') {
+    try {
+      const handleBuf = win.getNativeWindowHandle();
+      if (handleBuf && handleBuf.length >= 8) {
+        const hwnd = handleBuf.readBigUInt64LE(0);
+        // 0x00000011 = WDA_EXCLUDEFROMCAPTURE (hides from screen share/screenshots in Win 10 2004+ / Win 11)
+        const res11 = SetWindowDisplayAffinity(hwnd, 0x00000011);
+        if (!res11) {
+          // 0x00000001 = WDA_MONITOR (renders black box in screen share/screenshots)
+          const res1 = SetWindowDisplayAffinity(hwnd, 0x00000001);
+          console.log('[WIN32] SetWindowDisplayAffinity WDA_MONITOR (0x1):', res1);
+        } else {
+          console.log('[WIN32] SetWindowDisplayAffinity WDA_EXCLUDEFROMCAPTURE (0x11): success');
+        }
+      }
+    } catch (err) {
+      console.error('[WIN32] SetWindowDisplayAffinity error:', err);
+    }
+  }
+}
+
 // ─── Create main overlay window ───────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -113,12 +152,11 @@ function createWindow() {
     minWidth: 500,
     minHeight: 200,
     frame: false,
-    transparent: false,
-    backgroundColor: '#09090e',
+    transparent: true,
+    backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: false,
-    type: 'toolbar', // Helps Windows DWM exclude window from screen capture
     title: "PrepAI Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,18 +170,6 @@ function createWindow() {
     show: false
   });
 
-  const applyContentProtection = () => {
-    try {
-      const ok = mainWindow.setContentProtection(true);
-      mainWindow.setAlwaysOnTop(true, 'screen-saver');
-      console.log(`[WINDOW] setContentProtection(true) -> ${ok}`);
-    } catch (e) {
-      console.error('[WINDOW] setContentProtection error:', e);
-    }
-  };
-
-  applyContentProtection();
-
   const startUrl = isDev
     ? 'http://localhost:5173/assistant'
     : `http://127.0.0.1:${localPort}/assistant`;
@@ -156,11 +182,12 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    applyContentProtection();
-    setTimeout(applyContentProtection, 500);
+    applyWin32ContentProtection(mainWindow);
+    setTimeout(() => applyWin32ContentProtection(mainWindow), 500);
+    setTimeout(() => applyWin32ContentProtection(mainWindow), 1500);
   });
 
-  mainWindow.on('focus', applyContentProtection);
+  mainWindow.on('focus', () => applyWin32ContentProtection(mainWindow));
 
 
   mainWindow.webContents.on('did-finish-load', () => {
