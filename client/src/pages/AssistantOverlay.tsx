@@ -183,11 +183,12 @@ function groupHistoryByDay(history: QA[]): DayGroup[] {
 const getApiUrl = (path: string) => {
   const baseUrl = import.meta.env.VITE_API_URL || 'https://careercopilot-hu7q.onrender.com';
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const apiBase = normalizedBase.endsWith('/api') ? normalizedBase : `${normalizedBase}/api`;
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  if (normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
-    return `${normalizedBase}${normalizedPath.substring(4)}`;
+  if (apiBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${apiBase}${normalizedPath.substring(4)}`;
   }
-  return `${normalizedBase}${normalizedPath}`;
+  return `${apiBase}${normalizedPath}`;
 };
 
 interface QA {
