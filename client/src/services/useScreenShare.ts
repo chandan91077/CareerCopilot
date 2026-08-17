@@ -118,31 +118,26 @@ export function useScreenShare() {
         }
 
         if (sourceIdToUse) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceIdToUse,
-                minWidth: 1280,
-                maxWidth: 1920,
-                minHeight: 720,
-                maxHeight: 1080,
-              },
-            } as any,
-          });
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: sourceIdToUse,
+                },
+              } as any,
+            });
+          } catch (err1) {
+            console.warn('[SCREEN-SHARE] getUserMedia with sourceId failed, falling back to getDisplayMedia:', err1);
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          }
         } else {
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: 'always' } as any,
-            audio: false,
-          });
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
         }
       } else {
         // Browser standard display media prompt (explicit candidate selection)
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' } as any,
-          audio: false,
-        });
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       }
 
       mediaStreamRef.current = stream;
