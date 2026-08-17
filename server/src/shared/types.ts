@@ -175,3 +175,32 @@ export interface PromptConfig {
   updatedBy: string;
   updatedAt: string;
 }
+
+export interface ScreenShareSession {
+  id: string;
+  sessionId: string;
+  candidateId: string;
+  status: 'active' | 'stopped' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface CreateScreenShareResponse {
+  sessionId: string;
+  password: string;
+  expiresAt: string;
+  status: 'active';
+}
+
+export interface JoinScreenShareRequest {
+  sessionId: string;
+  password: string;
+}
+
+export interface JoinScreenShareResponse {
+  ok: boolean;
+  sessionId: string;
+  candidateId: string;
+  expiresAt: string;
+}
+

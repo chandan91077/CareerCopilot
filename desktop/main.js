@@ -156,7 +156,7 @@ function createWindow() {
     backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
-    skipTaskbar: false,
+    skipTaskbar: true,
     title: "PrepAI Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -169,6 +169,10 @@ function createWindow() {
     },
     show: false
   });
+
+  // Windows can sometimes re-add the taskbar icon when the window is shown.
+  // Reapply the setting explicitly after creation and on show.
+  mainWindow.setSkipTaskbar(true);
 
   // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity)
   mainWindow.setContentProtection(true);
@@ -185,7 +189,9 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
+    mainWindow.setSkipTaskbar(true);
     mainWindow.show();
+    mainWindow.setSkipTaskbar(true);
     applyWin32ContentProtection(mainWindow);
     setTimeout(() => applyWin32ContentProtection(mainWindow), 500);
     setTimeout(() => applyWin32ContentProtection(mainWindow), 1500);
@@ -199,6 +205,11 @@ function createWindow() {
   });
 
   mainWindow.on('focus', () => applyWin32ContentProtection(mainWindow));
+  mainWindow.on('show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setSkipTaskbar(true);
+    }
+  });
 
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -350,7 +361,7 @@ app.whenReady().then(() => {
   ipcMain.handle('get-screen-sources', async () => {
     try {
       const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window'],
+        types: ['screen','window'],
         thumbnailSize: { width: 0, height: 0 }
       });
       return sources.map(s => ({ id: s.id, name: s.name }));

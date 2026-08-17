@@ -15,7 +15,9 @@ import {
   Moon, 
   Menu, 
   X,
-  User
+  User,
+  Monitor,
+  Tv
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -53,6 +55,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Screen Share', path: '/screen-share', icon: Monitor },
+    { name: 'Watch Stream', path: '/screen-share/view', icon: Tv },
     { name: 'Subscription', path: '/subscription', icon: CreditCard },
   ];
 

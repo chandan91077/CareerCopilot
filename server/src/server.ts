@@ -19,6 +19,8 @@ import paymentRoutes from './routes/payment.routes';
 import adminRoutes from './routes/admin.routes';
 import interviewRoutes from './routes/interview.routes';
 import codingRoutes from './routes/coding.routes';
+import screenShareRoutes from './routes/screenShare.routes';
+import { setupScreenShareSocket } from './socket/screenShare.socket';
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +32,9 @@ const io = new SocketServer(server, {
     methods: ['GET', 'POST']
   }
 });
+
+// Setup Real-time Screen Sharing Socket Signaling
+setupScreenShareSocket(io);
 
 // Middlewares
 app.use(helmet());
@@ -60,6 +65,7 @@ app.use('/api/interview', interviewRoutes);
 app.use('/api/coding', codingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/screen-share', screenShareRoutes);
 
 // Root Endpoint
 app.get('/', (req, res) => {

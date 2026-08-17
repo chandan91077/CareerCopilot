@@ -10,6 +10,8 @@ import Dashboard from './pages/Dashboard';
 import AssistantOverlay from './pages/AssistantOverlay';
 import Subscription from './pages/Subscription';
 import Settings from './pages/Settings';
+import CandidateScreenShare from './pages/CandidateScreenShare';
+import ScreenShareViewer from './pages/ScreenShareViewer';
 
 // Private Route Guard
 interface PrivateRouteProps {
@@ -77,6 +79,26 @@ export default function App() {
             <PrivateRoute>
               <DashboardLayout>
                 <Subscription />
+              </DashboardLayout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/screen-share"
+          element={
+            <PrivateRoute>
+              <DashboardLayout>
+                <CandidateScreenShare />
+              </DashboardLayout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/screen-share/view"
+          element={
+            <PrivateRoute>
+              <DashboardLayout>
+                <ScreenShareViewer />
               </DashboardLayout>
             </PrivateRoute>
           }

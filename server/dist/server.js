@@ -20,6 +20,10 @@ const resume_routes_1 = __importDefault(require("./routes/resume.routes"));
 const assistant_routes_1 = __importDefault(require("./routes/assistant.routes"));
 const payment_routes_1 = __importDefault(require("./routes/payment.routes"));
 const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
+const interview_routes_1 = __importDefault(require("./routes/interview.routes"));
+const coding_routes_1 = __importDefault(require("./routes/coding.routes"));
+const screenShare_routes_1 = __importDefault(require("./routes/screenShare.routes"));
+const screenShare_socket_1 = require("./socket/screenShare.socket");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 // Configure Socket.IO
@@ -29,6 +33,8 @@ const io = new socket_io_1.Server(server, {
         methods: ['GET', 'POST']
     }
 });
+// Setup Real-time Screen Sharing Socket Signaling
+(0, screenShare_socket_1.setupScreenShareSocket)(io);
 // Middlewares
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)());
@@ -52,8 +58,11 @@ app.use('/api/auth', auth_routes_1.default);
 app.use('/api/profile', profile_routes_1.default);
 app.use('/api/resume', resume_routes_1.default);
 app.use('/api/assistant', assistant_routes_1.default);
+app.use('/api/interview', interview_routes_1.default);
+app.use('/api/coding', coding_routes_1.default);
 app.use('/api/payment', payment_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
+app.use('/api/screen-share', screenShare_routes_1.default);
 // Root Endpoint
 app.get('/', (req, res) => {
     res.json({ message: 'AI Interview Preparation Platform API - Running' });
@@ -75,18 +84,29 @@ io.on('connection', (socket) => {
         console.log(`[SOCKET] User disconnected: ${socket.id}`);
     });
 });
-// Connect to Database
+// ── Start HTTP server immediately (don't wait for DB) ──────────────
+// /api/assistant/transcribe and /api/assistant/ask work without MongoDB.
+// DB-dependent routes (auth, resume, interview) return 503 gracefully if DB is down.
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai-interview-platform';
+server.listen(PORT, () => {
+    console.log(`\n✅ [SERVER] API listening on port ${PORT}`);
+    console.log(`   Transcription: http://localhost:${PORT}/api/assistant/transcribe`);
+    console.log(`   Ask:           http://localhost:${PORT}/api/assistant/ask\n`);
+});
+// ── Connect MongoDB in background ───────────────────────────────────
 mongoose_1.default
     .connect(MONGO_URI)
     .then(() => {
-    console.log('[DB] Connected to MongoDB database successfully.');
-    server.listen(PORT, () => {
-        console.log(`[SERVER] API listening on port ${PORT}...`);
-    });
+    console.log('[DB] ✅ Connected to MongoDB successfully.');
 })
     .catch((err) => {
-    console.error('[DB] Connection error:', err.message);
-    process.exit(1);
+    console.warn('[DB] ⚠️  MongoDB unavailable:', err.message);
+    console.warn('[DB]    Server still running — transcription & AI answers work without DB.');
+    console.warn('[DB]    Start MongoDB to enable auth/resume/interview features.\n');
+});
+// ── Graceful shutdown ────────────────────────────────────────────────
+process.on('SIGINT', () => {
+    console.log('\n[SERVER] Shutting down...');
+    server.close(() => mongoose_1.default.connection.close().finally(() => process.exit(0)));
 });

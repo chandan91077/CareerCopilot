@@ -13,6 +13,15 @@ const upload = (0, multer_1.default)({
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 const router = (0, express_1.Router)();
+// Log a clear warning at startup if OPENAI_API_KEY is missing
+if (!process.env.OPENAI_API_KEY) {
+    console.error('\n' +
+        '╔══════════════════════════════════════════════════════════════╗\n' +
+        '║  ⚠️  OPENAI_API_KEY is NOT set in server/.env               ║\n' +
+        '║  Audio transcription (Whisper) will NOT work.               ║\n' +
+        '║  Add your key: OPENAI_API_KEY=sk-...                        ║\n' +
+        '╚══════════════════════════════════════════════════════════════╝\n');
+}
 // POST /assistant/analyze-screen - Analyze base64 image capture against user resume
 router.post('/analyze-screen', auth_middleware_1.authMiddleware, async (req, res) => {
     const { image } = req.body;
@@ -60,7 +69,8 @@ router.post('/analyze-screen', auth_middleware_1.authMiddleware, async (req, res
     }
 });
 // POST /assistant/ask - Answer real-time transcribed audio question
-router.post('/ask', auth_middleware_1.authMiddleware, async (req, res) => {
+// Uses optionalAuth so the desktop overlay works without a login session
+router.post('/ask', auth_middleware_1.optionalAuthMiddleware, async (req, res) => {
     const { question } = req.body;
     if (!question || question.trim() === '') {
         return res.status(400).json({ success: false, message: 'Question is required' });
@@ -84,17 +94,32 @@ router.post('/ask', auth_middleware_1.authMiddleware, async (req, res) => {
     }
 });
 // POST /assistant/transcribe - Transcribe real-time audio chunk
-router.post('/transcribe', auth_middleware_1.authMiddleware, upload.single('audio'), async (req, res) => {
+// Uses optionalAuth: works for both logged-in users and the Electron
+// desktop overlay guest mode. A valid OpenAI key is still required.
+router.post('/transcribe', auth_middleware_1.optionalAuthMiddleware, upload.single('audio'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No audio file uploaded' });
         }
+        // Guard: if neither API key is set, return 503
+        if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
+            return res.status(503).json({
+                success: false,
+                message: 'Transcription unavailable: OPENAI_API_KEY or GROQ_API_KEY is not configured on the server.'
+            });
+        }
+        console.log(`[TRANSCRIBE] Received audio chunk: ${req.file.size} bytes, type: ${req.file.mimetype}, user: ${req.user?.id || 'guest'}`);
         const transcription = await openai_service_1.OpenAIService.transcribeAudio(req.file.buffer, req.file.originalname);
+        console.log(`[TRANSCRIBE] Whisper result: "${transcription.slice(0, 80)}..."`);
         return res.json({ success: true, text: transcription });
     }
     catch (error) {
-        console.error('Transcribe error:', error);
-        return res.status(500).json({ success: false, message: error.message || 'Server error transcribing audio' });
+        console.error('[TRANSCRIBE] Error:', error.status || 500, error.message || error);
+        const statusCode = error.status || (error.message?.includes('429') || error.message?.includes('quota') ? 429 : 500);
+        return res.status(statusCode).json({
+            success: false,
+            message: error.message || 'Server error transcribing audio'
+        });
     }
 });
 exports.default = router;

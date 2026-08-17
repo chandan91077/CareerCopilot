@@ -2,7 +2,7 @@
   "appId": "com.prepai.desktop",
   "productName": "PrepAI",
   "directories": {
-    "output": "release"
+    "output": "C:/Users/chand/AppData/Local/PrepAI-release"
   },
   "files": [
     "main.js",

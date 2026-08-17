@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Camera, Mic, MicOff, ChevronLeft, ChevronRight,
   Send, Loader2, EyeOff, Sun, X, Code2, User, Volume2,
-  AlertCircle, CheckCircle2, Radio, UploadCloud
+  AlertCircle, CheckCircle2, Radio, UploadCloud, Monitor
 } from 'lucide-react';
 
 // ─── Glass styles ──────────────────────────────────────────────────
@@ -947,6 +947,16 @@ export default function AssistantOverlay() {
           >
             <Camera size={11} /> Capture
           </button>
+
+          {/* Real-time Screen Share button */}
+          <a
+            href="/screen-share"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 999, background: 'rgba(34,197,94,.18)', color: '#86efac', border: '1px solid rgba(34,197,94,.3)', fontSize: 9, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', WebkitAppRegion: 'no-drag' } as any}
+          >
+            <Monitor size={11} /> Screen Share
+          </a>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' } as any}>

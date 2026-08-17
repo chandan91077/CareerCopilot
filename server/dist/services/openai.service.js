@@ -6,12 +6,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_PROMPTS = exports.OpenAIService = void 0;
 const openai_1 = __importDefault(require("openai"));
 const models_1 = require("../models");
-const getApiKey = () => process.env.OPENAI_API_KEY || '';
 const getOpenAIClient = () => {
-    const apiKey = getApiKey();
-    if (!apiKey)
-        return null;
-    return new openai_1.default({ apiKey });
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey && openaiKey.trim().length > 0) {
+        return {
+            client: new openai_1.default({ apiKey: openaiKey }),
+            model: 'gpt-4o-mini',
+            visionModel: 'gpt-4o'
+        };
+    }
+    const groqKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
+    if (groqKey && groqKey.trim().length > 0) {
+        return {
+            client: new openai_1.default({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
+            model: 'llama-3.3-70b-versatile',
+            visionModel: 'llama-3.2-11b-vision-preview'
+        };
+    }
+    return null;
 };
 // Fallback Mock Responses for development if API key is not present
 const mocks = {
@@ -100,13 +112,13 @@ async function getSystemPrompt(key) {
 }
 class OpenAIService {
     static async reviewResume(resumeText) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return mocks.resumeReview;
         }
         const systemPrompt = await getSystemPrompt('resume_review');
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Resume text:\n${resumeText}` }
@@ -116,13 +128,13 @@ class OpenAIService {
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async compareResumeWithJD(resumeText, jdText) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return mocks.compareJD;
         }
         const systemPrompt = await getSystemPrompt('resume_compare');
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
@@ -132,8 +144,8 @@ class OpenAIService {
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async generateNextQuestion(category, experience, questionHistory = []) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             const defaultQuestions = [
                 "What are the differences between SQL and NoSQL databases?",
                 "Explain how the Event Loop works in Node.js.",
@@ -144,8 +156,8 @@ class OpenAIService {
             return unused.length > 0 ? unused[0] : defaultQuestions[0];
         }
         const systemPrompt = await getSystemPrompt('interview_question');
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 {
@@ -157,13 +169,13 @@ class OpenAIService {
         return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
     }
     static async evaluateAnswer(question, userAnswer, category) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return mocks.behavioralReview;
         }
         const systemPrompt = await getSystemPrompt('answer_evaluator');
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
@@ -173,13 +185,13 @@ class OpenAIService {
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async evaluateCodingSolution(questionTitle, description, code, language) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return mocks.codingReview;
         }
         const systemPrompt = await getSystemPrompt('coding_evaluator');
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 {
@@ -192,12 +204,12 @@ class OpenAIService {
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async evaluateBehavioralAnswer(question, userAnswer) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return mocks.behavioralReview;
         }
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 {
                     role: 'system',
@@ -221,16 +233,16 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async analyzeScreen(base64Image, resumeText) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return {
                 questionDetected: "Simulated question: 'How do you design a high-availability backend cluster?'",
                 hint: "Be sure to mention stateless API servers, load balancing (Nginx/HAProxy), database replication (primary-replica), and standard fallback caching (Redis) matching your Node/Express experience.",
                 codeSnippet: "// Mock Javascript structural design\nconst cluster = require('cluster');\nif (cluster.isPrimary) { ... }"
             };
         }
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+        const response = await ai.client.chat.completions.create({
+            model: ai.visionModel,
             messages: [
                 {
                     role: 'system',
@@ -266,15 +278,15 @@ Output strictly as JSON in the following format:
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async answerAssistantQuery(question, resumeText) {
-        const openai = getOpenAIClient();
-        if (!openai) {
+        const ai = getOpenAIClient();
+        if (!ai) {
             return {
                 text: "Mock AI Answer: Ensure you listen carefully and break down your answer using the STAR method if it's a behavioral question. For technical questions, mention trade-offs.",
-                code: "// Simulated fallback code\nconsole.log('OpenAI API Key missing');"
+                code: "// Simulated fallback code\nconsole.log('OpenAI / Groq API Key missing');"
             };
         }
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const response = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [
                 {
                     role: 'system',
@@ -298,23 +310,60 @@ Output strictly as JSON in the following format:
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async transcribeAudio(audioBuffer, filename) {
-        const openai = getOpenAIClient();
-        if (!openai) {
-            // Mock transcription for local development when API key is missing
-            return "What are the differences between SQL and NoSQL databases?";
+        const openaiKey = process.env.OPENAI_API_KEY || '';
+        const groqKey = process.env.GROQ_API_KEY || '';
+        if (!openaiKey && !groqKey) {
+            throw new Error('OPENAI_API_KEY or GROQ_API_KEY is not set. Please add a valid API key to server/.env.');
         }
-        try {
-            const file = await openai_1.default.toFile(audioBuffer, filename);
-            const response = await openai.audio.transcriptions.create({
-                file: file,
-                model: 'whisper-1',
-            });
-            return response.text;
+        // 1. Try Groq API if GROQ_API_KEY is provided
+        if (groqKey) {
+            try {
+                const groq = new openai_1.default({
+                    apiKey: groqKey,
+                    baseURL: 'https://api.groq.com/openai/v1',
+                });
+                const file = await openai_1.default.toFile(audioBuffer, filename);
+                const response = await groq.audio.transcriptions.create({
+                    file: file,
+                    model: 'whisper-large-v3',
+                });
+                if (response.text)
+                    return response.text;
+            }
+            catch (groqErr) {
+                console.warn('[Whisper-Groq] Groq transcription error:', groqErr.message || groqErr);
+                if (!openaiKey)
+                    throw groqErr;
+            }
         }
-        catch (err) {
-            console.error('Whisper transcription failed:', err);
-            throw err;
+        // 2. Try OpenAI API
+        if (openaiKey) {
+            const openai = new openai_1.default({ apiKey: openaiKey });
+            try {
+                const file = await openai_1.default.toFile(audioBuffer, filename);
+                const response = await openai.audio.transcriptions.create({
+                    file: file,
+                    model: 'whisper-1',
+                });
+                return response.text;
+            }
+            catch (err) {
+                console.error('[Whisper-OpenAI] Transcription failed:', err.status, err.message || err);
+                // Format clean actionable errors
+                if (err.status === 429 || err.code === 'insufficient_quota' || (err.message && err.message.includes('quota'))) {
+                    const quotaErr = new Error('OpenAI API quota exceeded (429). Please add credits at platform.openai.com/account/billing or add a free GROQ_API_KEY to server/.env.');
+                    quotaErr.status = 429;
+                    throw quotaErr;
+                }
+                if (err.status === 401 || (err.message && err.message.includes('invalid_api_key'))) {
+                    const authErr = new Error('Invalid OpenAI API key. Please verify OPENAI_API_KEY in server/.env.');
+                    authErr.status = 401;
+                    throw authErr;
+                }
+                throw err;
+            }
         }
+        throw new Error('No working Speech-to-Text API configured.');
     }
 }
 exports.OpenAIService = OpenAIService;
