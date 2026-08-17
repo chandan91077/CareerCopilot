@@ -42,6 +42,22 @@ function setupPermissions() {
     return true;
   });
 
+  // Native getDisplayMedia handler for Electron 16+
+  if (typeof session.defaultSession.setDisplayMediaRequestHandler === 'function') {
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+        if (sources.length > 0) {
+          callback({ video: sources[0] });
+        } else {
+          callback({});
+        }
+      }).catch((err) => {
+        console.error('[DISPLAY CAPTURE] Error getting sources:', err);
+        callback({});
+      });
+    });
+  }
+
   // Override CSP to allow speech recognition and media APIs
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({

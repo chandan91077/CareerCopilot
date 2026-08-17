@@ -103,26 +103,44 @@ export function useScreenShare() {
 
       // Check if running in Electron
       const isElectron = !!(window as any).electronAPI;
-      if (isElectron && selectedSourceId) {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: selectedSourceId,
-              minWidth: 1280,
-              maxWidth: 1920,
-              minHeight: 720,
-              maxHeight: 1080,
-            },
-          } as any,
-        });
+      if (isElectron) {
+        let sourceIdToUse = selectedSourceId;
+        if (!sourceIdToUse && (window as any).electronAPI?.getScreenSources) {
+          try {
+            const sources = await (window as any).electronAPI.getScreenSources();
+            const screenSource = sources.find((s: any) => s.id.startsWith('screen:')) || sources[0];
+            if (screenSource) {
+              sourceIdToUse = screenSource.id;
+            }
+          } catch (e) {
+            console.warn('[SCREEN-SHARE] Failed to get desktop sources:', e);
+          }
+        }
+
+        if (sourceIdToUse) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceIdToUse,
+                minWidth: 1280,
+                maxWidth: 1920,
+                minHeight: 720,
+                maxHeight: 1080,
+              },
+            } as any,
+          });
+        } else {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' } as any,
+            audio: false,
+          });
+        }
       } else {
         // Browser standard display media prompt (explicit candidate selection)
         stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always',
-          } as any,
+          video: { cursor: 'always' } as any,
           audio: false,
         });
       }

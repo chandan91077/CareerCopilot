@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Camera, Mic, MicOff, ChevronLeft, ChevronRight,
   Send, Loader2, EyeOff, Sun, X, Code2, User, Volume2,
-  AlertCircle, CheckCircle2, Radio, UploadCloud, Monitor
+  AlertCircle, CheckCircle2, Radio, UploadCloud, Monitor,
+  Copy, Check, Lock, KeyRound, Play, Square, ExternalLink
 } from 'lucide-react';
+import { useScreenShare } from '../services/useScreenShare';
 
 // ─── Glass styles ──────────────────────────────────────────────────
 const G: React.CSSProperties = {
@@ -215,6 +217,18 @@ export default function AssistantOverlay() {
   const [micError, setMicError] = useState('');
   const [resume, setResume] = useState<ResumeData | null>(null);
   const [resumeStatus, setResumeStatus] = useState<'loading'|'loaded'|'none'>('loading');
+
+  // ── Real-time Screen Sharing Hook ──────────────────────────────────
+  const {
+    status: screenStatus,
+    errorMsg: screenError,
+    activeSession: screenSession,
+    startScreenShare,
+    stopScreenShare,
+  } = useScreenShare();
+  const [showScreenPanel, setShowScreenPanel] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
 
   // ── Persistent caption history ───────────────────────────────────
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
@@ -948,15 +962,19 @@ export default function AssistantOverlay() {
             <Camera size={11} /> Capture
           </button>
 
-          {/* Real-time Screen Share button */}
-          <a
-            href="/screen-share"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 999, background: 'rgba(34,197,94,.18)', color: '#86efac', border: '1px solid rgba(34,197,94,.3)', fontSize: 9, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', WebkitAppRegion: 'no-drag' } as any}
+          {/* Real-time Screen Share toggle button */}
+          <button
+            onClick={() => setShowScreenPanel(!showScreenPanel)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 999,
+              background: screenStatus === 'sharing' ? 'rgba(34,197,94,.25)' : 'rgba(34,197,94,.18)',
+              color: screenStatus === 'sharing' ? '#4ade80' : '#86efac',
+              border: `1px solid ${screenStatus === 'sharing' ? 'rgba(34,197,94,.5)' : 'rgba(34,197,94,.3)'}`,
+              fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none', WebkitAppRegion: 'no-drag'
+            } as any}
           >
-            <Monitor size={11} /> Screen Share
-          </a>
+            <Monitor size={11} /> {screenStatus === 'sharing' ? 'Sharing...' : 'Screen Share'}
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' } as any}>
@@ -986,7 +1004,123 @@ export default function AssistantOverlay() {
         </div>
       </div>
 
-      {/* ══ MIDDLE ════════════════════════════════════════════════ */}
+      {/* ══ EMBEDDED SCREEN SHARE PANEL ═══════════════════════════ */}
+      {(showScreenPanel || screenStatus === 'sharing') && (
+        <div style={{
+          ...G,
+          borderRadius: 14,
+          padding: '8px 12px',
+          margin: '4px 0',
+          background: 'rgba(15,15,24,0.95)',
+          border: '1px solid rgba(99,102,241,0.4)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          WebkitAppRegion: 'no-drag'
+        } as any}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Monitor size={14} style={{ color: '#4ade80' }} />
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#f4f4f5' }}>Screen Sharing</span>
+              <span style={{
+                fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
+                background: screenStatus === 'sharing' ? 'rgba(34,197,94,0.2)' : 'rgba(113,113,122,0.2)',
+                color: screenStatus === 'sharing' ? '#4ade80' : '#a1a1aa',
+                border: `1px solid ${screenStatus === 'sharing' ? 'rgba(34,197,94,0.4)' : 'rgba(113,113,122,0.3)'}`
+              }}>
+                {screenStatus === 'sharing' ? '● SHARING' : 'IDLE'}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowScreenPanel(false)}
+              style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: 2 }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+
+          {screenError && (
+            <div style={{ fontSize: 9, color: '#f87171', background: 'rgba(239,68,68,0.1)', padding: '4px 8px', borderRadius: 6 }}>
+              ⚠️ {screenError}
+            </div>
+          )}
+
+          {screenStatus !== 'sharing' ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 9.5, color: '#a1a1aa', flex: 1 }}>
+                Broadcast your screen securely to evaluators via encrypted WebRTC.
+              </p>
+              <button
+                onClick={() => startScreenShare()}
+                disabled={screenStatus === 'connecting'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', fontSize: 10,
+                  fontWeight: 700, border: 'none', cursor: 'pointer', outline: 'none'
+                }}
+              >
+                <Play size={10} fill="#fff" /> Start Screen Sharing
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* Credentials Box */}
+              {screenSession && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'rgba(24,24,37,0.8)', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(63,63,70,0.5)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Lock size={10} style={{ color: '#818cf8' }} />
+                    <span style={{ fontSize: 8.5, color: '#71717a', textTransform: 'uppercase', fontWeight: 700 }}>Session ID:</span>
+                    <span style={{ fontSize: 11, fontWeight: 900, fontFamily: 'monospace', color: '#818cf8', letterSpacing: 1 }}>{screenSession.sessionId}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(screenSession.sessionId);
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 2000);
+                      }}
+                      style={{ background: 'rgba(99,102,241,0.2)', border: 'none', borderRadius: 4, padding: '2px 5px', color: '#a5b4fc', fontSize: 8.5, cursor: 'pointer', marginLeft: 2 }}
+                    >
+                      {copiedId ? <Check size={8} /> : <Copy size={8} />} {copiedId ? 'Copied' : 'Copy ID'}
+                    </button>
+                  </div>
+
+                  {screenSession.password && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderLeft: '1px solid rgba(63,63,70,0.5)', paddingLeft: 10 }}>
+                      <KeyRound size={10} style={{ color: '#c084fc' }} />
+                      <span style={{ fontSize: 8.5, color: '#71717a', textTransform: 'uppercase', fontWeight: 700 }}>Password:</span>
+                      <span style={{ fontSize: 11, fontWeight: 900, fontFamily: 'monospace', color: '#c084fc', letterSpacing: 1 }}>{screenSession.password}</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(screenSession.password || '');
+                          setCopiedPass(true);
+                          setTimeout(() => setCopiedPass(false), 2000);
+                        }}
+                        style={{ background: 'rgba(168,85,247,0.2)', border: 'none', borderRadius: 4, padding: '2px 5px', color: '#e9d5ff', fontSize: 8.5, cursor: 'pointer', marginLeft: 2 }}
+                      >
+                        {copiedPass ? <Check size={8} /> : <Copy size={8} />} {copiedPass ? 'Copied' : 'Copy Password'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 8.5, color: '#71717a' }}>
+                  💡 Viewer enters ID & Password at <strong>/screen-share/view</strong> on Web App to watch
+                </span>
+                <button
+                  onClick={stopScreenShare}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6,
+                    background: '#e11d48', color: '#fff', fontSize: 9, fontWeight: 700, border: 'none', cursor: 'pointer'
+                  }}
+                >
+                  <Square size={8} fill="#fff" /> Stop Sharing
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8, margin: '6px 0', WebkitAppRegion: 'no-drag' } as any}>
 
         {/* Content card with Row layout */}
