@@ -12,6 +12,9 @@ import Subscription from './pages/Subscription';
 import Settings from './pages/Settings';
 import CandidateScreenShare from './pages/CandidateScreenShare';
 import ScreenShareViewer from './pages/ScreenShareViewer';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUserMgmt from './pages/admin/AdminUserMgmt';
+import AdminPrompts from './pages/admin/AdminPrompts';
 
 // Private Route Guard
 interface PrivateRouteProps {
@@ -21,6 +24,17 @@ interface PrivateRouteProps {
 const PrivateRoute = ({ children }: PrivateRouteProps) => {
   const token = localStorage.getItem('token');
   return token ? <>{children}</> : <Navigate to="/login" replace />;
+};
+
+// Admin Route Guard
+const AdminRoute = ({ children }: PrivateRouteProps) => {
+  const token = localStorage.getItem('token');
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  if (!token) return <Navigate to="/login" replace />;
+  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
 };
 
 const ElectronHandler = () => {
@@ -103,6 +117,39 @@ export default function App() {
             </PrivateRoute>
           }
         />
+
+        {/* Admin Module Routes */}
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <DashboardLayout>
+                <AdminDashboard />
+              </DashboardLayout>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <AdminRoute>
+              <DashboardLayout>
+                <AdminUserMgmt />
+              </DashboardLayout>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/prompts"
+          element={
+            <AdminRoute>
+              <DashboardLayout>
+                <AdminPrompts />
+              </DashboardLayout>
+            </AdminRoute>
+          }
+        />
+
         {/* Catch-all Redirect */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

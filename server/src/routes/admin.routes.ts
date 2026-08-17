@@ -109,6 +109,24 @@ router.put('/users/:id/role', authMiddleware, adminMiddleware, async (req: AuthR
   }
 });
 
+// PUT /admin/users/:id/plan - Add/remove/change user subscription plan
+router.put('/users/:id/plan', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  const { plan } = req.body;
+  try {
+    if (!['free', 'basic', 'premium'].includes(plan)) {
+      return res.status(400).json({ message: 'Invalid subscription plan type' });
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, { plan }, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await logAdminAction(req.user!.id, req.user!.email, `Change subscription plan to ${plan}`, user._id.toString());
+
+    return res.json({ message: 'User subscription plan updated successfully', user });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error updating user subscription plan' });
+  }
+});
+
 // DELETE /admin/users/:id - Remove user
 router.delete('/users/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
   try {
