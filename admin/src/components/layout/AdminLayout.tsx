@@ -121,7 +121,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </div>
           
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">PrepAI Admin Portal</h2>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">CareerCopilot Admin Portal</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Secure administrator access
             </p>
@@ -216,7 +216,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-dark-900 border-r border-slate-200 dark:border-slate-800/60 sticky top-0 h-screen transition-colors">
         <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800/60 gap-2">
           <span className="text-xl font-bold bg-gradient-to-r from-rose-500 to-amber-500 bg-clip-text text-transparent">
-            PrepAI Admin
+            CareerCopilot Admin
           </span>
           <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 font-extrabold border border-rose-500/20">
             SYSTEM
@@ -277,7 +277,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Mobile view Header */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden h-16 bg-white dark:bg-dark-900 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between px-6 sticky top-0 z-40 transition-colors">
-          <span className="text-lg font-bold bg-gradient-to-r from-rose-500 to-amber-500 bg-clip-text text-transparent">PrepAI Admin</span>
+          <span className="text-lg font-bold bg-gradient-to-r from-rose-500 to-amber-500 bg-clip-text text-transparent">CareerCopilot Admin</span>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -299,7 +299,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <div className="md:hidden fixed inset-0 z-35 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}>
             <nav className="w-72 bg-white dark:bg-dark-900 h-full p-6 flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-8">
-                <span className="text-lg font-bold text-rose-500">PrepAI Admin</span>
+                <span className="text-lg font-bold text-rose-500">CareerCopilot Admin</span>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 rounded bg-slate-100 dark:bg-dark-800 text-slate-500">
                   <X className="w-5 h-5" />
                 </button>

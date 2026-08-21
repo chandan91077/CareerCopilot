@@ -209,7 +209,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    title: "PrepAI Interview Assistant",
+    title: "CareerCopilot Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -270,11 +270,11 @@ function createWindow() {
     mainWindow.webContents.executeJavaScript(`
       // Monkey-patch getUserMedia to always succeed in Electron
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        console.log('[PrepAI] getUserMedia available');
+        console.log('[CareerCopilot] getUserMedia available');
       } else {
-        console.warn('[PrepAI] getUserMedia NOT available - mic will not work');
+        console.warn('[CareerCopilot] getUserMedia NOT available - mic will not work');
       }
-      console.log('[PrepAI] SpeechRecognition:', !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+      console.log('[CareerCopilot] SpeechRecognition:', !!(window.SpeechRecognition || window.webkitSpeechRecognition));
     `).catch(console.error);
   });
 
@@ -367,7 +367,7 @@ app.whenReady().then(() => {
         { label: 'Show Assistant', click: () => { if (mainWindow) mainWindow.show(); else createWindow(); } },
         { label: 'Quit', click: () => app.quit() }
       ]);
-      tray.setToolTip('PrepAI Interview Assistant Active');
+      tray.setToolTip('CareerCopilot Interview Assistant Active');
       tray.setContextMenu(contextMenu);
     } catch (err) {
       console.log("[TRAY] No tray icon found, skipping:", err.message);

@@ -72,6 +72,10 @@ app.use('/api/screen-share', screenShareRoutes);
 // Desktop EXE Installer Download Endpoint
 app.get('/api/download/desktop', (req, res) => {
   const possiblePaths = [
+    path.join(__dirname, '../public/downloads/CareerCopilotSetup.exe'),
+    path.join(__dirname, '../../desktop/release/CareerCopilotSetup.exe'),
+    path.join(process.cwd(), 'public/downloads/CareerCopilotSetup.exe'),
+    path.join(process.cwd(), '../desktop/release/CareerCopilotSetup.exe'),
     path.join(__dirname, '../public/downloads/InterviewAISetup.exe'),
     path.join(__dirname, '../../desktop/release/InterviewAISetup.exe'),
     path.join(process.cwd(), 'public/downloads/InterviewAISetup.exe'),
@@ -80,7 +84,7 @@ app.get('/api/download/desktop', (req, res) => {
 
   for (const exePath of possiblePaths) {
     if (fs.existsSync(exePath)) {
-      return res.download(exePath, 'InterviewAISetup.exe');
+      return res.download(exePath, 'CareerCopilotSetup.exe');
     }
   }
 
@@ -89,7 +93,7 @@ app.get('/api/download/desktop', (req, res) => {
 
 // Root Endpoint
 app.get('/', (req, res) => {
-  res.json({ message: 'AI Interview Preparation Platform API - Running' });
+  res.json({ message: 'CareerCopilot API - Running' });
 });
 
 // Socket.IO event handler for interactive live interview practice

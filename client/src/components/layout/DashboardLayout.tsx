@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-dark-900 border-r border-slate-200 dark:border-slate-800/60 sticky top-0 h-screen transition-colors duration-200">
         <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800/60 gap-2">
           <span className="text-2xl font-bold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-            PrepAI
+            CareerCopilot
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-brand-50 text-indigo-600 dark:bg-dark-800 dark:text-indigo-400 font-semibold border border-indigo-200/30">
             PRO
@@ -160,7 +160,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden h-16 bg-white dark:bg-dark-900 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between px-6 sticky top-0 z-40 transition-colors duration-200">
           <span className="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
-            PrepAI
+            CareerCopilot
           </span>
           <div className="flex items-center gap-3">
             <button
@@ -186,7 +186,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-8">
-                <span className="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">PrepAI</span>
+                <span className="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">CareerCopilot</span>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 rounded bg-slate-100 dark:bg-dark-800 text-slate-500">
                   <X className="w-5 h-5" />
                 </button>

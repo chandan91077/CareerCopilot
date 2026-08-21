@@ -1,7 +1,7 @@
 {
-  "name": "ai-interview-platform-desktop",
+  "name": "careercopilot-desktop",
   "version": "1.0.0",
-  "description": "Electron desktop shell wrapper for PrepAI",
+  "description": "Electron desktop shell wrapper for CareerCopilot",
   "main": "main.js",
   "scripts": {
     "electron": "electron .",

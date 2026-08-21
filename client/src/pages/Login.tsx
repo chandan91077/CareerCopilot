@@ -67,7 +67,7 @@ export default function Login() {
           <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent mt-3">
             Welcome Back
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Elevate your interview game with PrepAI</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Elevate your interview game with CareerCopilot</p>
         </div>
 
         {error && (

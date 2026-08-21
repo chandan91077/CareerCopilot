@@ -1,6 +1,6 @@
-# PrepAI - AI Interview & Coding Preparation Platform
+# CareerCopilot - AI Interview & Coding Preparation Platform
 
-PrepAI is a full-stack, monorepo platform designed to help candidates practice interviews, audit resumes against Job Descriptions, solve algorithm tasks using an integrated code sandbox editor, practice STAR behavioral questions, and review detailed grading reports.
+CareerCopilot is a full-stack, monorepo platform designed to help candidates practice interviews, audit resumes against Job Descriptions, solve algorithm tasks using an integrated code sandbox editor, practice STAR behavioral questions, and review detailed grading reports.
 
 ## How It Works (High Level)
 
@@ -186,7 +186,7 @@ _Port mapping: Admin panel starts on port `5174`._
 
 ### 4. Desktop Client Launch (Electron)
 
-To boot PrepAI inside the desktop shell frame:
+To boot CareerCopilot inside the desktop shell frame:
 
 ```bash
 cd ../desktop
@@ -236,7 +236,7 @@ cd desktop
 npm run dist
 ```
 
- This generates the installer in `C:/Users/chand/AppData/Local/PrepAI-release/InterviewAISetup.exe`.
+ This generates the installer in `desktop/release/CareerCopilotSetup.exe`.
 
 ---
 
@@ -258,8 +258,8 @@ Access points:
 
 ## 🪟 Windows Installation Guide (End-User)
 
-1. **Download**: Obtain the compiled `InterviewAISetup.exe` from the target distribution server.
-2. **Execute**: Double-click `InterviewAISetup.exe` to trigger NSIS installation.
+1. **Download**: Obtain the compiled `CareerCopilotSetup.exe` from the target distribution server or web dashboard.
+2. **Execute**: Double-click `CareerCopilotSetup.exe` to trigger NSIS installation.
 3. **Accept**: Approve license arrangements and select target folder paths (creates Desktop & Start menu shortcuts automatically).
-4. **Launch**: Launch PrepAI from shortcuts.
+4. **Launch**: Launch CareerCopilot from shortcuts.
 5. **Practice**: Set up candidate profiles, sync PDF resumes, start mock voice interviews, and solve algorithm sheets!

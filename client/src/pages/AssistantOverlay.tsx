@@ -709,7 +709,7 @@ export default function AssistantOverlay() {
     try {
       const eAPI = (window as any).electronAPI;
       if (!eAPI || !eAPI.getScreenSources) {
-        throw new Error('Electron APIs not available. Please run in the PrepAI desktop application.');
+        throw new Error('Electron APIs not available. Please run in the CareerCopilot desktop application.');
       }
 
       // 1. Retrieve screen sources from Electron
@@ -947,18 +947,18 @@ export default function AssistantOverlay() {
       eAPI.onNavigateNext?.(() => setDayIdx((p: number) => Math.min(dayGroups.length - 1, p + 1)));
 
       eAPI.checkMediaPermissions?.().then((result: any) => {
-        console.log('[PrepAI] Electron media permissions:', result);
+        console.log('[CareerCopilot] Electron media permissions:', result);
       });
     }
 
     // Log MIME support for diagnostics
     const mime = getSupportedMimeType();
-    console.log('[PrepAI] Best audio MIME type:', mime || '(browser default)');
-    console.log('[PrepAI] SpeechRecognition available:', !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
-    console.log('[PrepAI] getUserMedia available:', !!(navigator.mediaDevices?.getUserMedia));
+    console.log('[CareerCopilot] Best audio MIME type:', mime || '(browser default)');
+    console.log('[CareerCopilot] SpeechRecognition available:', !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
+    console.log('[CareerCopilot] getUserMedia available:', !!(navigator.mediaDevices?.getUserMedia));
 
     pushQA({
-      question: 'PrepAI ready',
+      question: 'CareerCopilot ready',
       text: '🎙 Click mic for YOUR voice | 🔊 Click again for INTERVIEWER + your audio\n📸 Ctrl+Enter to capture screen | Type below to ask anything\n\n💡 Captions will appear in the left panel with timestamps. AI answers appear below.',
     });
 
@@ -1012,8 +1012,8 @@ export default function AssistantOverlay() {
       {/* ══ TOP BAR ═══════════════════════════════════════════════ */}
       <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', WebkitAppRegion: 'drag' } as any}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, WebkitAppRegion: 'no-drag' } as any}>
-          <div style={{ width: 20, height: 20, borderRadius: 6, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900, color: '#fff' }}>P</div>
-          <span style={{ fontWeight: 800, fontSize: 12, color: '#f4f4f5', letterSpacing: '-0.3px' }}>PrepAI</span>
+          <div style={{ width: 20, height: 20, borderRadius: 6, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900, color: '#fff' }}>C</div>
+          <span style={{ fontWeight: 800, fontSize: 12, color: '#f4f4f5', letterSpacing: '-0.3px' }}>CareerCopilot</span>
 
           {/* Live status pill */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 999,

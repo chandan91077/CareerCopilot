@@ -1,8 +1,8 @@
 {
-  "appId": "com.prepai.desktop",
-  "productName": "PrepAI",
+  "appId": "com.careercopilot.desktop",
+  "productName": "CareerCopilot",
   "directories": {
-    "output": "C:/Users/chand/AppData/Local/PrepAI-release"
+    "output": "release"
   },
   "files": [
     "main.js",
@@ -24,8 +24,8 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "PrepAI",
-    "artifactName": "InterviewAISetup.exe",
-    "uninstallDisplayName": "PrepAI Uninstaller"
+    "shortcutName": "CareerCopilot",
+    "artifactName": "CareerCopilotSetup.exe",
+    "uninstallDisplayName": "CareerCopilot Uninstaller"
   }
 }

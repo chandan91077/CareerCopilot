@@ -15,7 +15,7 @@ export default function CandidateScreenShare() {
             Candidate Screen Sharing
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            Screen sharing is managed directly inside the <strong>PrepAI Desktop Overlay</strong> window to ensure smooth background operation and overlay privacy.
+            Screen sharing is managed directly inside the <strong>CareerCopilot Desktop Overlay</strong> window to ensure smooth background operation and overlay privacy.
           </p>
         </div>
 
@@ -25,7 +25,7 @@ export default function CandidateScreenShare() {
             Quick Instructions
           </div>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Open the <strong>PrepAI Desktop App</strong> and click <strong>[ Screen Share ]</strong> in the top toolbar.</li>
+            <li>Open the <strong>CareerCopilot Desktop App</strong> and click <strong>[ Screen Share ]</strong> in the top toolbar.</li>
             <li>Click <strong>[ Start Screen Sharing ]</strong> inside the overlay to generate your Session ID and Temporary Password.</li>
             <li>Evaluators can watch your stream by navigating to <strong>Watch Stream</strong>.</li>
           </ul>

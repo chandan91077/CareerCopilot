@@ -61,7 +61,7 @@ export default function InterviewHistory() {
         </head>
         <body>
           <div class="header">
-            <h1 style="margin: 0; color: #4f46e5;">PrepAI Performance Report</h1>
+            <h1 style="margin: 0; color: #4f46e5;">CareerCopilot Performance Report</h1>
             <p style="margin: 5px 0 0 0; color: #64748b;">Generated for Mock Interview on ${new Date(session.createdAt).toLocaleDateString()}</p>
           </div>
           <div class="score-box">
