@@ -99,7 +99,7 @@ export default function Landing() {
       <header className="fixed top-5 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl z-50">
         <div className="bg-[#121214]/80 border border-zinc-800/80 rounded-full px-6 py-3 flex items-center justify-between backdrop-blur-md shadow-lg shadow-black/50">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-650 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-500/20">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-500/20">
               C
             </div>
             <span className="font-extrabold text-sm tracking-tight bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
@@ -120,7 +120,7 @@ export default function Landing() {
             </Link>
             <Link 
               to="/register" 
-              className="text-xs font-bold bg-gradient-to-r from-indigo-650 to-purple-650 hover:from-indigo-500 hover:to-purple-500 text-white px-5 py-2.5 rounded-full shadow-lg shadow-indigo-550/10 transition-all hover:scale-[1.03]"
+              className="text-xs font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white px-5 py-2.5 rounded-full shadow-lg shadow-indigo-500/10 transition-all hover:scale-[1.03]"
             >
               Get Started
             </Link>
@@ -133,7 +133,7 @@ export default function Landing() {
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute top-1/3 left-1/3 w-[250px] h-[250px] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none" />
 
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-indigo-550/20 bg-indigo-550/5 text-indigo-400 text-[10px] font-bold tracking-wider uppercase mb-6 shadow-inner animate-pulse">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/5 text-indigo-400 text-[10px] font-bold tracking-wider uppercase mb-6 shadow-inner animate-pulse">
           <Sparkles className="w-3.5 h-3.5" /> Next-Gen AI Interview Preparation
         </div>
 
@@ -141,14 +141,14 @@ export default function Landing() {
           Ace Technical & HR Interviews <br className="hidden md:inline" /> With Real-Time AI Feedback
         </h1>
 
-        <p className="text-zinc-450 text-sm md:text-base mt-6 max-w-2xl leading-relaxed">
+        <p className="text-zinc-400 text-sm md:text-base mt-6 max-w-2xl leading-relaxed">
           Unlock interactive mock interviews, sandboxed coding playgrounds, ATS resume skill checking, and behavioral grading configured for professional success.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 mt-10">
           <Link 
             to="/register" 
-            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-indigo-650 to-purple-650 hover:from-indigo-550 hover:to-purple-550 text-white font-extrabold rounded-full shadow-xl shadow-indigo-500/20 transition-all hover:scale-[1.04] flex items-center justify-center gap-2 group text-sm cursor-pointer animate-shimmer"
+            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold rounded-full shadow-xl shadow-indigo-500/20 transition-all hover:scale-[1.04] flex items-center justify-center gap-2 group text-sm cursor-pointer animate-shimmer"
           >
             Start Preparing Now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
@@ -164,7 +164,7 @@ export default function Landing() {
       {/* Process Section (How It Works) */}
       <section id="how-it-works" className="py-24 px-6 max-w-6xl mx-auto border-t border-zinc-900/60 relative">
         <div className="text-center max-w-xl mx-auto mb-16">
-          <div className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-550/20 flex items-center justify-center mx-auto mb-4">
+          <div className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-xs font-bold text-indigo-400">01</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Structured Preparation</h2>
@@ -184,7 +184,7 @@ export default function Landing() {
                 {step.icon}
               </div>
               <h3 className="text-base font-bold text-zinc-200 mb-2">{step.title}</h3>
-              <p className="text-xs text-zinc-450 leading-relaxed">{step.desc}</p>
+              <p className="text-xs text-zinc-400 leading-relaxed">{step.desc}</p>
             </div>
           ))}
         </div>
@@ -193,7 +193,7 @@ export default function Landing() {
       {/* Keyboard Shortcuts Section */}
       <section id="shortcuts" className="py-24 px-6 max-w-6xl mx-auto border-t border-zinc-900/60">
         <div className="text-center max-w-xl mx-auto mb-16">
-          <div className="w-8 h-8 rounded-full bg-purple-500/10 border border-purple-550/20 flex items-center justify-center mx-auto mb-4">
+          <div className="w-8 h-8 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mx-auto mb-4">
             <Keyboard className="w-4 h-4 text-purple-400" />
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Master the Controls</h2>
@@ -206,7 +206,7 @@ export default function Landing() {
               key={ctrl.key} 
               className="bg-[#121214]/40 border border-zinc-800 rounded-2xl px-6 py-5 flex flex-col items-center justify-center min-w-[160px] flex-1 text-center"
             >
-              <kbd className="px-3 py-1 rounded bg-zinc-900 border border-zinc-850 text-[10px] font-mono text-indigo-400 font-extrabold tracking-wide mb-3 shadow-inner">
+              <kbd className="px-3 py-1 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-indigo-400 font-extrabold tracking-wide mb-3 shadow-inner">
                 {ctrl.key}
               </kbd>
               <span className="text-xs font-semibold text-zinc-400">{ctrl.desc}</span>
@@ -218,7 +218,7 @@ export default function Landing() {
       {/* Features Grid Section */}
       <section id="features" className="py-24 px-6 max-w-6xl mx-auto border-t border-zinc-900/60">
         <div className="text-center max-w-xl mx-auto mb-16">
-          <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-550/20 flex items-center justify-center mx-auto mb-4">
+          <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
             <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Premium Architecture</h2>
@@ -236,7 +236,7 @@ export default function Landing() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-zinc-200 mb-1">{feat.title}</h3>
-                <p className="text-xs text-zinc-455 leading-relaxed">{feat.desc}</p>
+                <p className="text-xs text-zinc-400 leading-relaxed">{feat.desc}</p>
               </div>
             </div>
           ))}
@@ -246,7 +246,7 @@ export default function Landing() {
       {/* Pricing / Trial Onboarding Flow */}
       <section id="pricing" className="py-24 px-6 max-w-6xl mx-auto border-t border-zinc-900/60">
         <div className="text-center max-w-xl mx-auto mb-16">
-          <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-550/20 flex items-center justify-center mx-auto mb-4">
+          <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-xs font-bold text-amber-400">04</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Simple Transition</h2>
@@ -260,11 +260,11 @@ export default function Landing() {
               className="bg-[#121214]/60 border border-zinc-800 rounded-3xl p-6 relative flex flex-col justify-between"
             >
               <div>
-                <div className="w-6 h-6 rounded-full bg-indigo-500/10 border border-indigo-550/30 flex items-center justify-center font-extrabold text-[10px] text-indigo-400 mb-4">
+                <div className="w-6 h-6 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center font-extrabold text-[10px] text-indigo-400 mb-4">
                   {pStep.num}
                 </div>
                 <h3 className="text-sm font-bold text-zinc-200 mb-2">{pStep.title}</h3>
-                <p className="text-xs text-zinc-450 leading-relaxed mb-6">{pStep.desc}</p>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-6">{pStep.desc}</p>
               </div>
             </div>
           ))}
@@ -273,7 +273,7 @@ export default function Landing() {
         <div className="mt-12 text-center">
           <Link 
             to="/register" 
-            className="inline-flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-indigo-650 to-purple-650 hover:from-indigo-550 hover:to-purple-550 text-white font-bold rounded-full text-xs transition-all hover:scale-[1.03]"
+            className="inline-flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-full text-xs transition-all hover:scale-[1.03]"
           >
             Access Free Trial <ArrowRight className="w-4 h-4" />
           </Link>
@@ -287,7 +287,7 @@ export default function Landing() {
         <div className="max-w-2xl mx-auto bg-[#121214]/85 border border-zinc-800/80 rounded-3xl p-10 relative shadow-2xl">
           <Download className="w-12 h-12 text-indigo-400 mx-auto mb-6 animate-bounce" />
           <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">Prefer a Desktop Experience?</h2>
-          <p className="text-zinc-550 text-xs mt-3 max-w-md mx-auto leading-relaxed">
+          <p className="text-zinc-400 text-xs mt-3 max-w-md mx-auto leading-relaxed">
             Download the desktop client wrapper targeting Windows. Runs directly from your task tray with absolute convenience.
           </p>
 
@@ -298,7 +298,7 @@ export default function Landing() {
                 e.preventDefault();
                 alert('The setup installation installer is available in the desktop folder distribution release structure: release/InterviewAISetup.exe');
               }}
-              className="w-full sm:w-auto px-6 py-3.5 bg-indigo-650 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/10 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/10 cursor-pointer"
             >
               <Download className="w-4 h-4" /> Download Installer (.exe)
             </a>
@@ -311,7 +311,7 @@ export default function Landing() {
       <footer className="py-12 border-t border-zinc-900/80 text-center text-[10px] text-zinc-500">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-indigo-500/10 border border-indigo-550/20 flex items-center justify-center font-bold text-indigo-400 text-xs">
+            <div className="w-6 h-6 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-indigo-400 text-xs">
               C
             </div>
             <span className="font-bold text-zinc-400 tracking-tight">CareerCopilot</span>

@@ -112,7 +112,7 @@ export default function InterviewHistory() {
         </div>
       ) : history.length === 0 ? (
         <div className="glass-panel rounded-3xl p-12 text-center text-slate-400">
-          <History className="w-16 h-16 mx-auto mb-4 text-slate-350" />
+          <History className="w-16 h-16 mx-auto mb-4 text-slate-400" />
           <p className="text-lg font-bold">No sessions found</p>
           <p className="text-sm mt-1">You haven't completed any mock interviews yet. Start one to see logs here.</p>
         </div>
@@ -192,8 +192,8 @@ export default function InterviewHistory() {
                               Answer: {q.userAnswer || '[No Response provided]'}
                             </div>
                             <div className="pt-2 flex flex-col gap-2">
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-350">AI Score: {q.score}%</span>
-                              <p className="text-xs text-slate-550 dark:text-slate-400">{q.feedback}</p>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">AI Score: {q.score}%</span>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{q.feedback}</p>
                             </div>
                           </div>
                         ))}

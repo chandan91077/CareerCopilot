@@ -395,7 +395,7 @@ export default function MockInterview() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-500">Technical Depth</span>
-                  <span className="text-slate-700 dark:text-slate-350">{finalReport.metrics?.technicalAccuracy || 0}%</span>
+                  <span className="text-slate-700 dark:text-slate-300">{finalReport.metrics?.technicalAccuracy || 0}%</span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-dark-800 h-2 rounded-full overflow-hidden">
                   <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${finalReport.metrics?.technicalAccuracy || 0}%` }} />
@@ -405,7 +405,7 @@ export default function MockInterview() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-500">Communication</span>
-                  <span className="text-slate-700 dark:text-slate-350">{finalReport.metrics?.communication || 0}%</span>
+                  <span className="text-slate-700 dark:text-slate-300">{finalReport.metrics?.communication || 0}%</span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-dark-800 h-2 rounded-full overflow-hidden">
                   <div className="bg-purple-500 h-full rounded-full" style={{ width: `${finalReport.metrics?.communication || 0}%` }} />
@@ -415,7 +415,7 @@ export default function MockInterview() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-500">Grammar & Structure</span>
-                  <span className="text-slate-700 dark:text-slate-350">{finalReport.metrics?.grammar || 0}%</span>
+                  <span className="text-slate-700 dark:text-slate-300">{finalReport.metrics?.grammar || 0}%</span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-dark-800 h-2 rounded-full overflow-hidden">
                   <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${finalReport.metrics?.grammar || 0}%` }} />
@@ -425,7 +425,7 @@ export default function MockInterview() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-500">Completeness (STAR)</span>
-                  <span className="text-slate-700 dark:text-slate-350">{finalReport.metrics?.completeness || 0}%</span>
+                  <span className="text-slate-700 dark:text-slate-300">{finalReport.metrics?.completeness || 0}%</span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-dark-800 h-2 rounded-full overflow-hidden">
                   <div className="bg-amber-500 h-full rounded-full" style={{ width: `${finalReport.metrics?.completeness || 0}%` }} />

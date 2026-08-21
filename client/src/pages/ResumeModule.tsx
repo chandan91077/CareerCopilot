@@ -160,7 +160,7 @@ export default function ResumeModule() {
                 <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Skills Found</h4>
                 <div className="flex flex-wrap gap-2">
                   {latestResume.skills.map((skill: string) => (
-                    <span key={skill} className="px-2.5 py-1 text-xs font-semibold bg-indigo-550/10 text-indigo-600 dark:bg-dark-800 dark:text-indigo-400 rounded-full border border-indigo-500/10">
+                    <span key={skill} className="px-2.5 py-1 text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:bg-dark-800 dark:text-indigo-400 rounded-full border border-indigo-500/10">
                       {skill}
                     </span>
                   ))}

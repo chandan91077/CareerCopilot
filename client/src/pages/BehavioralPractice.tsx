@@ -133,7 +133,7 @@ export default function BehavioralPractice() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-slate-400">Communication</span>
-                    <span className="text-slate-600 dark:text-slate-350">{evalResult.metrics?.communication}%</span>
+                    <span className="text-slate-600 dark:text-slate-300">{evalResult.metrics?.communication}%</span>
                   </div>
                   <div className="w-full bg-slate-200 dark:bg-dark-800 h-1.5 rounded-full overflow-hidden">
                     <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${evalResult.metrics?.communication}%` }} />
@@ -143,7 +143,7 @@ export default function BehavioralPractice() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-slate-400">Grammar Structure</span>
-                    <span className="text-slate-600 dark:text-slate-350">{evalResult.metrics?.grammar}%</span>
+                    <span className="text-slate-600 dark:text-slate-300">{evalResult.metrics?.grammar}%</span>
                   </div>
                   <div className="w-full bg-slate-200 dark:bg-dark-800 h-1.5 rounded-full overflow-hidden">
                     <div className="bg-purple-500 h-full rounded-full" style={{ width: `${evalResult.metrics?.grammar}%` }} />
@@ -153,7 +153,7 @@ export default function BehavioralPractice() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-slate-400">STAR Completeness</span>
-                    <span className="text-slate-600 dark:text-slate-350">{evalResult.metrics?.completeness}%</span>
+                    <span className="text-slate-600 dark:text-slate-300">{evalResult.metrics?.completeness}%</span>
                   </div>
                   <div className="w-full bg-slate-200 dark:bg-dark-800 h-1.5 rounded-full overflow-hidden">
                     <div className="bg-amber-500 h-full rounded-full" style={{ width: `${evalResult.metrics?.completeness}%` }} />
@@ -163,7 +163,7 @@ export default function BehavioralPractice() {
 
               <div className="p-4 bg-slate-100 dark:bg-dark-900 rounded-2xl border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] uppercase font-bold text-indigo-500 flex items-center mb-1"><Sparkles className="w-3.5 h-3.5 mr-1" /> AI Coach Feedback</span>
-                <p className="text-xs text-slate-500 dark:text-slate-450 leading-relaxed text-justify">{evalResult.feedback}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed text-justify">{evalResult.feedback}</p>
               </div>
 
               <button
@@ -187,7 +187,7 @@ export default function BehavioralPractice() {
                 <li>**Action**: Specify YOUR individual contribution.</li>
                 <li>**Result**: Describe metrics, achievements, or learnings.</li>
               </ul>
-              <div className="p-4 bg-slate-150 dark:bg-dark-950 rounded-2xl flex items-start gap-2.5">
+              <div className="p-4 bg-slate-100 dark:bg-dark-950 rounded-2xl flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                 <p className="text-[10px] text-slate-500 leading-relaxed">
                   Make sure to highlight business outcomes, such as page latency reduced by 30% or product deliveries streamlined.

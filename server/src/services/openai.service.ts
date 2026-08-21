@@ -21,7 +21,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
   if (groqKey && groqKey.trim().length > 0) {
     return {
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       visionModel: 'llama-3.2-11b-vision-preview'
     };
   }
@@ -32,7 +32,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
 async function createChatCompletionWithFallback(
   ai: AIClientConfig,
   payload: any,
-  fallbackModels: string[] = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']
+  fallbackModels: string[] = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
 ) {
   const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
 
@@ -42,14 +42,19 @@ async function createChatCompletionWithFallback(
       return await ai.client.chat.completions.create({ ...payload, model: modelName });
     } catch (err: any) {
       lastError = err;
-      const message = String(err?.message || '');
-      const isModelMissing =
+      const message = String(err?.message || '').toLowerCase();
+      const isModelError =
         err?.status === 404 ||
-        message.toLowerCase().includes('does not exist') ||
-        message.toLowerCase().includes('you do not have access') ||
-        message.toLowerCase().includes('model not found');
+        err?.status === 400 ||
+        message.includes('does not exist') ||
+        message.includes('you do not have access') ||
+        message.includes('model not found') ||
+        message.includes('decommissioned') ||
+        message.includes('deprecated') ||
+        message.includes('no longer supported') ||
+        message.includes('invalid_model');
 
-      if (!isModelMissing) {
+      if (!isModelError) {
         throw err;
       }
     }
@@ -157,7 +162,7 @@ export class OpenAIService {
         { role: 'user', content: `Resume text:\n${resumeText}` }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -175,7 +180,7 @@ export class OpenAIService {
         { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -202,7 +207,7 @@ export class OpenAIService {
           content: `Category: ${category}\nExperience: ${experience}\nHistory of asked questions: ${JSON.stringify(questionHistory)}`
         }
       ]
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
   }
@@ -220,7 +225,7 @@ export class OpenAIService {
         { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -241,7 +246,7 @@ export class OpenAIService {
         }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -272,7 +277,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
         { role: 'user', content: `Behavioral Question: ${question}\nAnswer: ${userAnswer}` }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
+    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -319,7 +324,7 @@ Output strictly as JSON in the following format:
         }
       ],
       response_format: { type: 'json_object' }
-    }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b']);
+    }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }

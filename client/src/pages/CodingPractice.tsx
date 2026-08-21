@@ -168,7 +168,7 @@ export default function CodingPractice() {
           {selectedQuestion && (
             <div className="p-6 bg-slate-100 dark:bg-dark-900 border-t border-slate-200 dark:border-slate-800/60 overflow-y-auto max-h-[300px]">
               <h4 className="font-extrabold text-base text-slate-800 dark:text-slate-200">{selectedQuestion.title}</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed whitespace-pre-wrap mt-3 text-justify">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap mt-3 text-justify">
                 {selectedQuestion.description}
               </p>
             </div>
@@ -230,7 +230,7 @@ export default function CodingPractice() {
                 className={`px-6 py-2.5 font-bold text-xs flex items-center cursor-pointer transition-colors ${
                   activeTab === 'console' 
                     ? 'border-b-2 border-indigo-500 text-indigo-500' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-350'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                 }`}
               >
                 <Terminal className="w-4 h-4 mr-1.5" /> Compiler Console
@@ -249,7 +249,7 @@ export default function CodingPractice() {
                 className={`px-6 py-2.5 font-bold text-xs flex items-center cursor-pointer transition-colors ${
                   activeTab === 'ai' 
                     ? 'border-b-2 border-indigo-500 text-indigo-500' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-350'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                 }`}
               >
                 <Award className="w-4 h-4 mr-1.5" /> AI Feedback Review
