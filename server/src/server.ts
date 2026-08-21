@@ -6,6 +6,8 @@ import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import { Server as SocketServer } from 'socket.io';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
 // Load environment variables
 dotenv.config();
@@ -66,6 +68,24 @@ app.use('/api/coding', codingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/screen-share', screenShareRoutes);
+
+// Desktop EXE Installer Download Endpoint
+app.get('/api/download/desktop', (req, res) => {
+  const possiblePaths = [
+    path.join(__dirname, '../public/downloads/InterviewAISetup.exe'),
+    path.join(__dirname, '../../desktop/release/InterviewAISetup.exe'),
+    path.join(process.cwd(), 'public/downloads/InterviewAISetup.exe'),
+    path.join(process.cwd(), '../desktop/release/InterviewAISetup.exe')
+  ];
+
+  for (const exePath of possiblePaths) {
+    if (fs.existsSync(exePath)) {
+      return res.download(exePath, 'InterviewAISetup.exe');
+    }
+  }
+
+  return res.redirect('https://github.com/chandan91077/CareerCopilot/releases/latest');
+});
 
 // Root Endpoint
 app.get('/', (req, res) => {

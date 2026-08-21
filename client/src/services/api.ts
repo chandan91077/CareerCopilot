@@ -40,4 +40,13 @@ api.interceptors.response.use(
   }
 );
 
+export function getApiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (cleanPath.startsWith('/api/')) {
+    const relativePath = cleanPath.slice(4);
+    return `${apiBaseUrl}${relativePath}`;
+  }
+  return `${apiBaseUrl}${cleanPath}`;
+}
+
 export default api;
