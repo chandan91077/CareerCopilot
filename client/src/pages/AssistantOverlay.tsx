@@ -346,9 +346,10 @@ export default function AssistantOverlay() {
   const fetchResume = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) { setResumeStatus('none'); return; }
       const res = await fetch(getApiUrl('/api/resume/latest'), {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
       });
       if (res.ok) {
         const data = await res.json();
@@ -386,6 +387,9 @@ export default function AssistantOverlay() {
   const resumeRef = useRef<ResumeData | null>(null);
   resumeRef.current = resume;
 
+  const questionBufferRef = useRef<string[]>([]);
+  const pauseTimerRef = useRef<any>(null);
+
   const answerNow = useCallback(async (question: string) => {
     const key = question.trim().slice(0, 40).toLowerCase();
     if (answeredRef.current.has(key)) return;
@@ -417,6 +421,41 @@ export default function AssistantOverlay() {
       pushQA({ question, text: 'Error fetching answer from AI backend. Please try again.' });
     }
   }, [pushQA]);
+
+  const handleIncomingSpeech = useCallback((text: string) => {
+    if (isHallucinationOrFiller(text)) return;
+
+    // Append chunk to question buffer
+    questionBufferRef.current.push(text.trim());
+
+    // Reset silence/pause timer
+    if (pauseTimerRef.current) {
+      clearTimeout(pauseTimerRef.current);
+    }
+
+    // Wait for 3.5 seconds of silence (pause after question finishes)
+    pauseTimerRef.current = setTimeout(() => {
+      if (questionBufferRef.current.length === 0) return;
+
+      const rawCombined = questionBufferRef.current.join(' ').trim();
+      questionBufferRef.current = []; // Clear buffer for next question
+
+      // Deduplicate consecutive repeated words
+      const words = rawCombined.split(/\s+/);
+      const cleanedWords: string[] = [];
+      for (const w of words) {
+        if (cleanedWords.length === 0 || cleanedWords[cleanedWords.length - 1].toLowerCase() !== w.toLowerCase()) {
+          cleanedWords.push(w);
+        }
+      }
+      const fullQuestion = cleanedWords.join(' ');
+
+      if (fullQuestion.length > 8) {
+        console.log('[QUESTION FINALIZED AFTER 3.5s PAUSE]:', fullQuestion);
+        answerNow(fullQuestion);
+      }
+    }, 3500);
+  }, [answerNow]);
 
   // ─────────────────────────────────────────────────────────────────
   // ── CORE: Send audio blob to server and handle transcription ─────
@@ -488,9 +527,7 @@ export default function AssistantOverlay() {
 
         if (text.length > 0 && !isHallucinationOrFiller(text)) {
           addCaption(speaker, text);
-          if (isSubstantiveQuestion(text)) {
-            answerNow(text);
-          }
+          handleIncomingSpeech(text);
         }
       } else {
         setStage('Transcription', 'error', 'Empty response');
@@ -502,7 +539,7 @@ export default function AssistantOverlay() {
       setStage('Transcription', 'error', 'Network error');
       setMicError(`❌ Network error: ${err.message}`);
     }
-  }, [addCaption, answerNow, setStage]);
+  }, [addCaption, handleIncomingSpeech, setStage]);
 
   // ─────────────────────────────────────────────────────────────────
   // ── MICROPHONE: Speech recognition & MediaRecorder fallback ─────

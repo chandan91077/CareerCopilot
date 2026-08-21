@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
-import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
+import { authMiddleware, optionalAuthMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { OpenAIService } from '../services/openai.service';
 import { Resume, JobDescription, Profile } from '../models';
 
@@ -74,11 +74,17 @@ router.post('/upload', authMiddleware, upload.single('resume'), async (req: Auth
 });
 
 // GET /resume/latest
-router.get('/latest', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/latest', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const resume = await Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
+    let resume = null;
+    if (req.user?.id) {
+      resume = await Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
+    }
     if (!resume) {
-      return res.status(404).json({ message: 'No resume found for this user' });
+      resume = await Resume.findOne().sort({ createdAt: -1 });
+    }
+    if (!resume) {
+      return res.status(404).json({ message: 'No resume found' });
     }
     return res.json(resume);
   } catch (error: any) {

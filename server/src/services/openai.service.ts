@@ -383,14 +383,24 @@ Output strictly as JSON in the following format:
     const ai = getOpenAIClient();
     const fallbackAnswer = () => {
       const qLower = question.toLowerCase();
-      let text = `Here is an interview answer framework for "${question}":\n\n`;
+      let text = `Technical Answer for: "${question}"\n\n`;
       let code = "";
 
-      if (qLower.includes('oops') || qLower.includes('object oriented')) {
-        text += `• **OOP in Python**: Object-Oriented Programming uses Classes and Objects to structure code through Encapsulation, Inheritance, Polymorphism, and Abstraction.\n• **Classes & Instances**: A class defines state and methods; \`__init__\` initializes object attributes.\n• **Encapsulation & Reusability**: Protects internal data and promotes clean code design.`;
-        code = `class Developer:\n    def __init__(self, name, role):\n        self.name = name\n        self.role = role\n\n    def get_info(self):\n        return f"{self.name} - {self.role}"\n\ndev = Developer("Chandan", "Full Stack Engineer")\nprint(dev.get_info())`;
+      if (qLower.includes('second largest') || (qLower.includes('largest') && qLower.includes('java'))) {
+        text += `• **Optimal Single-Pass Approach**: Iterate through the array once while maintaining two variables: \`largest\` and \`secondLargest\` initialized to \`Integer.MIN_VALUE\`.\n• **Algorithm Logic**:\n  1. If current element > \`largest\`: set \`secondLargest = largest\` and \`largest = current\`.\n  2. Else if current element > \`secondLargest\` and != \`largest\`: set \`secondLargest = current\`.\n• **Time Complexity**: O(N) single pass.\n• **Space Complexity**: O(1) constant auxiliary space.`;
+        code = `public class Solution {\n    public static int findSecondLargest(int[] arr) {\n        if (arr == null || arr.length < 2) return -1;\n        int largest = Integer.MIN_VALUE, second = Integer.MIN_VALUE;\n        for (int num : arr) {\n            if (num > largest) {\n                second = largest;\n                largest = num;\n            } else if (num > second && num != largest) {\n                second = num;\n            }\n        }\n        return (second == Integer.MIN_VALUE) ? -1 : second;\n    }\n}`;
+      } else if (qLower.includes('oops') || qLower.includes('object oriented')) {
+        text += `• **OOP Core Pillars**: Object-Oriented Programming uses Classes and Objects based on 4 pillars:\n  1. **Encapsulation**: Hiding internal state behind methods.\n  2. **Inheritance**: Extending parent class attributes.\n  3. **Polymorphism**: Method overriding (runtime) and method overloading (compile-time).\n  4. **Abstraction**: Exposing high-level contracts via interfaces/abstract classes.`;
+        code = `class Developer:\n    def __init__(self, name, role):\n        self._name = name\n        self._role = role\n\n    def get_info(self):\n        return f"{self._name} ({self._role})"\n\ndev = Developer("Chandan", "Backend Engineer")\nprint(dev.get_info())`;
+      } else if (qLower.includes('reverse') && qLower.includes('string')) {
+        text += `• **Two-Pointer Approach**: Swap characters from start and end pointers moving inward.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1) in-place.`;
+        code = `public static String reverseString(String s) {\n    char[] chars = s.toCharArray();\n    int left = 0, right = chars.length - 1;\n    while (left < right) {\n        char temp = chars[left];\n        chars[left++] = chars[right];\n        chars[right--] = temp;\n    }\n    return new String(chars);\n}`;
+      } else if (qLower.includes('sql') || qLower.includes('join')) {
+        text += `• **SQL Joins Overview**:\n  - **INNER JOIN**: Returns rows with matching keys in both tables.\n  - **LEFT JOIN**: Returns all rows from left table plus matching right rows.\n  - **RIGHT JOIN**: Returns all rows from right table plus matching left rows.`;
+        code = `SELECT e.id, e.name, d.department_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.id;`;
       } else {
-        text += `• **Core Concept**: Explain the fundamental mechanism and main usage clearly.\n• **Key Features**: Highlight performance considerations, data structures, and trade-offs.\n• **Practical Application**: Relate to real-world development experience on your resume.`;
+        text += `• **Technical Approach**:\n  - Analyze problem constraints, inputs, and edge cases (null/empty data).\n  - Implement single-pass or hash-based lookup for optimal efficiency.\n• **Time Complexity**: O(N) optimal traversal.\n• **Space Complexity**: O(1) or O(N) memory allocation.`;
+        code = `// Solution implementation\npublic static void solve(int[] input) {\n    if (input == null || input.length == 0) return;\n    // Optimal algorithm execution\n}`;
       }
 
       return { text, code };
@@ -405,14 +415,15 @@ Output strictly as JSON in the following format:
         messages: [
           {
             role: 'system',
-            content: `You are an expert real-time mock interview companion.
-The user is currently in an interview. You will receive transcribed audio (either the interviewer asking a question, or the user speaking).
-Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
-Keep the answer concise (under 90 seconds to read) and use bullet points where applicable.
+            content: `You are a Senior Principal Software Engineer aiding a candidate in a live technical interview.
+Provide a DIRECT, COMPLETE, and SPECIFIC technical answer for the question.
+- Do NOT provide meta-coaching advice like "explain the core concept" or "mention trade-offs". Give the EXACT technical answer directly!
+- If the question involves algorithms, language features, data structures, or code (e.g. Java, Python, SQL, C++, JS), provide the COMPLETE working solution in the "code" field.
+- In the "text" field, explain the exact solution step-by-step with time and space complexities.
 Output strictly as JSON in the following format:
 {
-  "text": "Constructive hints and guidelines to speak or explain based on the user's resume...",
-  "code": "Optional code block in correct language if it is a coding question, else empty string"
+  "text": "Direct technical explanation of the solution with complexities and key steps...",
+  "code": "Complete working code snippet"
 }`
           },
           {
@@ -425,7 +436,7 @@ Output strictly as JSON in the following format:
 
       return JSON.parse(response.choices[0].message.content || '{}');
     } catch (err: any) {
-      console.warn('[OpenAIService.answerAssistantQuery] AI error, returning fallback answer:', err?.message || err);
+      console.warn('[OpenAIService.answerAssistantQuery] AI error, returning technical fallback answer:', err?.message || err);
       return fallbackAnswer();
     }
   }
