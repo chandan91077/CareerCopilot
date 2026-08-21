@@ -85,21 +85,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             // For admin dashboard, use a standard anchor tag to break out of the React Router
             // and pass the token in case the admin app is on a different subdomain
             if (item.path === '/admin') {
-              const token = localStorage.getItem('token');
-              const userStr = localStorage.getItem('user');
-              const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-              const defaultAdminUrl = isLocal ? 'http://localhost:5174' : 'https://career-copilot-admin.vercel.app';
-              const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || defaultAdminUrl;
-              const href = token && userStr 
-                ? `${adminUrl}?token=${token}&user=${encodeURIComponent(userStr)}` 
-                : adminUrl;
-                
               return (
-                <a
+                <Link
                   key={item.name}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  to="/admin"
                   className={`flex items-center px-4 py-3 rounded-xl transition-all duration-150 group font-medium text-sm ${
                     isActive
                       ? 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-600 dark:text-indigo-400 border-l-4 border-indigo-500'
@@ -110,7 +99,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     isActive ? 'text-indigo-500' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'
                   }`} />
                   {item.name}
-                </a>
+                </Link>
               );
             }
 

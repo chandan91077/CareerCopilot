@@ -13,6 +13,11 @@ import Settings from './pages/Settings';
 import CandidateScreenShare from './pages/CandidateScreenShare';
 import ScreenShareViewer from './pages/ScreenShareViewer';
 
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUserMgmt from './pages/admin/AdminUserMgmt';
+import AdminPrompts from './pages/admin/AdminPrompts';
+
 // Private Route Guard
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -97,23 +102,35 @@ export default function App() {
             </PrivateRoute>
           }
         />
+        {/* Integrated Admin Panel Routes */}
         <Route
           path="/admin"
           element={
-            <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white font-sans">
-              {(() => {
-                const token = localStorage.getItem('token');
-                const userStr = localStorage.getItem('user');
-                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const defaultAdminUrl = isLocal ? 'http://localhost:5174' : 'https://career-copilot-admin.vercel.app';
-                const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || defaultAdminUrl;
-                const target = token && userStr
-                  ? `${adminUrl}?token=${token}&user=${encodeURIComponent(userStr)}`
-                  : adminUrl;
-                window.location.href = target;
-                return <p className="text-slate-400 font-medium text-sm">Redirecting to Admin Portal...</p>;
-              })()}
-            </div>
+            <PrivateRoute>
+              <AdminLayout>
+                <AdminDashboard />
+              </AdminLayout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <PrivateRoute>
+              <AdminLayout>
+                <AdminUserMgmt />
+              </AdminLayout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin/prompts"
+          element={
+            <PrivateRoute>
+              <AdminLayout>
+                <AdminPrompts />
+              </AdminLayout>
+            </PrivateRoute>
           }
         />
         {/* Catch-all Redirect */}
