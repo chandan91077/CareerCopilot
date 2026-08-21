@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "electron": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "postdist": "powershell -Command \"New-Item -ItemType Directory -Force -Path ../server/public/downloads; Copy-Item release/CareerCopilotSetup.exe -Destination ../server/public/downloads/CareerCopilotSetup.exe -Force\""
   },
   "dependencies": {
     "electron-is-dev": "^3.0.1",
