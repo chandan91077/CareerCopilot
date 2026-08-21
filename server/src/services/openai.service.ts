@@ -51,21 +51,7 @@ async function createChatCompletionWithFallback(
       return await ai.client.chat.completions.create({ ...payload, model: modelName });
     } catch (err: any) {
       lastError = err;
-      const message = String(err?.message || '').toLowerCase();
-      const isModelError =
-        err?.status === 404 ||
-        err?.status === 400 ||
-        message.includes('does not exist') ||
-        message.includes('you do not have access') ||
-        message.includes('model not found') ||
-        message.includes('decommissioned') ||
-        message.includes('deprecated') ||
-        message.includes('no longer supported') ||
-        message.includes('invalid_model');
-
-      if (!isModelError) {
-        throw err;
-      }
+      console.warn(`[AI-Fallback] Model ${modelName} failed (${err?.status || err?.message}). Trying next fallback model...`);
     }
   }
 
@@ -328,7 +314,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
     if (!ai) {
       return {
         questionDetected: "Screen Captured",
-        hint: "Be sure to mention stateless API servers, load balancing, database replication, and fallback caching matching your technical experience.",
+        hint: "Screen captured. Be sure to mention stateless API servers, load balancing, database replication, and fallback caching matching your technical experience.",
         codeSnippet: ""
       };
     }
@@ -338,15 +324,18 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
         messages: [
           {
             role: 'system',
-            content: `You are an expert real-time mock interview companion.
-Review the screen capture showing the technical question, slide, or code prompt.
-Identify the question/problem on screen.
-Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
+            content: `You are an expert real-time technical interview companion.
+Review the screen capture showing a LeetCode problem, coding problem description, diagram, or interview code prompt.
+1. Identify the EXACT problem title and requirements visible on screen (e.g. "268. Missing Number", "Two Sum", "Reverse Linked List", "3Sum").
+2. In the "questionDetected" field, state the exact problem name and key constraints.
+3. In the "hint" field, provide step-by-step logic, optimal approach, Time Complexity O(...) and Space Complexity O(...).
+4. In the "codeSnippet" field, provide the COMPLETE WORKING CODE SOLUTION in the language visible on screen (or Java/Python).
+
 Output strictly as JSON in the following format:
 {
-  "questionDetected": "The technical question or problem detected...",
-  "hint": "Constructive hints and guidelines to speak or explain based on the user's resume...",
-  "codeSnippet": "Optional code block in correct language if it is a coding question, else empty string"
+  "questionDetected": "Exact problem name detected on screen",
+  "hint": "Constructive hints, optimal approach, Time Complexity O(...) and Space Complexity O(...)",
+  "codeSnippet": "Complete working solution code for the problem on screen"
 }`
           },
           {
@@ -386,21 +375,45 @@ Output strictly as JSON in the following format:
       let text = `Technical Answer for: "${question}"\n\n`;
       let code = "";
 
-      if (qLower.includes('second largest') || (qLower.includes('largest') && qLower.includes('java'))) {
-        text += `• **Optimal Single-Pass Approach**: Iterate through the array once while maintaining two variables: \`largest\` and \`secondLargest\` initialized to \`Integer.MIN_VALUE\`.\n• **Algorithm Logic**:\n  1. If current element > \`largest\`: set \`secondLargest = largest\` and \`largest = current\`.\n  2. Else if current element > \`secondLargest\` and != \`largest\`: set \`secondLargest = current\`.\n• **Time Complexity**: O(N) single pass.\n• **Space Complexity**: O(1) constant auxiliary space.`;
-        code = `public class Solution {\n    public static int findSecondLargest(int[] arr) {\n        if (arr == null || arr.length < 2) return -1;\n        int largest = Integer.MIN_VALUE, second = Integer.MIN_VALUE;\n        for (int num : arr) {\n            if (num > largest) {\n                second = largest;\n                largest = num;\n            } else if (num > second && num != largest) {\n                second = num;\n            }\n        }\n        return (second == Integer.MIN_VALUE) ? -1 : second;\n    }\n}`;
-      } else if (qLower.includes('oops') || qLower.includes('object oriented')) {
-        text += `• **OOP Core Pillars**: Object-Oriented Programming uses Classes and Objects based on 4 pillars:\n  1. **Encapsulation**: Hiding internal state behind methods.\n  2. **Inheritance**: Extending parent class attributes.\n  3. **Polymorphism**: Method overriding (runtime) and method overloading (compile-time).\n  4. **Abstraction**: Exposing high-level contracts via interfaces/abstract classes.`;
-        code = `class Developer:\n    def __init__(self, name, role):\n        self._name = name\n        self._role = role\n\n    def get_info(self):\n        return f"{self._name} ({self._role})"\n\ndev = Developer("Chandan", "Backend Engineer")\nprint(dev.get_info())`;
-      } else if (qLower.includes('reverse') && qLower.includes('string')) {
-        text += `• **Two-Pointer Approach**: Swap characters from start and end pointers moving inward.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1) in-place.`;
-        code = `public static String reverseString(String s) {\n    char[] chars = s.toCharArray();\n    int left = 0, right = chars.length - 1;\n    while (left < right) {\n        char temp = chars[left];\n        chars[left++] = chars[right];\n        chars[right--] = temp;\n    }\n    return new String(chars);\n}`;
-      } else if (qLower.includes('sql') || qLower.includes('join')) {
-        text += `• **SQL Joins Overview**:\n  - **INNER JOIN**: Returns rows with matching keys in both tables.\n  - **LEFT JOIN**: Returns all rows from left table plus matching right rows.\n  - **RIGHT JOIN**: Returns all rows from right table plus matching left rows.`;
+      const isPython = qLower.includes('python') || qLower.includes('py');
+      const isJava = qLower.includes('java') && !qLower.includes('script');
+      const isCpp = qLower.includes('c++') || qLower.includes('cpp');
+      const isSql = qLower.includes('sql') || qLower.includes('join') || qLower.includes('query');
+
+      if (qLower.includes('second largest') || (qLower.includes('largest') && qLower.includes('second'))) {
+        text += `• **Optimal Single-Pass Approach**: Maintain two variables (\`largest\` and \`secondLargest\`) in a single pass.\n• **Time Complexity**: O(N) single pass.\n• **Space Complexity**: O(1) auxiliary space.`;
+        if (isPython) {
+          code = `def find_second_largest(arr):\n    if not arr or len(arr) < 2:\n        return -1\n    largest = second = float('-inf')\n    for num in arr:\n        if num > largest:\n            second = largest\n            largest = num\n        elif num > second and num != largest:\n            second = num\n    return second if second != float('-inf') else -1\n\n# Example usage:\nprint(find_second_largest([12, 35, 1, 10, 34, 1]))  # Output: 34`;
+        } else {
+          code = `public class Solution {\n    public static int findSecondLargest(int[] arr) {\n        if (arr == null || arr.length < 2) return -1;\n        int largest = Integer.MIN_VALUE, second = Integer.MIN_VALUE;\n        for (int num : arr) {\n            if (num > largest) {\n                second = largest;\n                largest = num;\n            } else if (num > second && num != largest) {\n                second = num;\n            }\n        }\n        return (second == Integer.MIN_VALUE) ? -1 : second;\n    }\n}`;
+        }
+      } else if (qLower.includes('missing number') || qLower.includes('268')) {
+        text += `• **Mathematical Sum Formula Approach**: The sum of numbers from 0 to N is N*(N+1)/2. The missing number is expectedSum - actualSum.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1).`;
+        if (isPython) {
+          code = `def missingNumber(nums: list[int]) -> int:\n    n = len(nums)\n    return n * (n + 1) // 2 - sum(nums)\n\n# Example test:\nprint(missingNumber([3, 0, 1]))  # Output: 2`;
+        } else {
+          code = `class Solution {\n    public int missingNumber(int[] nums) {\n        int n = nums.length;\n        int expectedSum = n * (n + 1) / 2;\n        int actualSum = 0;\n        for (int num : nums) {\n            actualSum += num;\n        }\n        return expectedSum - actualSum;\n    }\n}`;
+        }
+      } else if (qLower.includes('3sum') || qLower.includes('3 some') || qLower.includes('three sum')) {
+        text += `• **Two-Pointer Approach**: Sort the array, then iterate each element \`i\` and use two pointers (\`left\`, \`right\`) to find pairs adding to \`-nums[i]\` while skipping duplicates.\n• **Time Complexity**: O(N^2).\n• **Space Complexity**: O(1) auxiliary space.`;
+        if (isPython) {
+          code = `def threeSum(nums: list[int]) -> list[list[int]]:\n    nums.sort()\n    res = []\n    for i in range(len(nums) - 2):\n        if i > 0 and nums[i] == nums[i-1]: continue\n        l, r = i + 1, len(nums) - 1\n        while l < r:\n            s = nums[i] + nums[l] + nums[r]\n            if s == 0:\n                res.append([nums[i], nums[l], nums[r]])\n                while l < r and nums[l] == nums[l+1]: l += 1\n                while l < r and nums[r] == nums[r-1]: r -= 1\n                l += 1; r -= 1\n            elif s < 0: l += 1\n            else: r -= 1\n    return res`;
+        } else {
+          code = `import java.util.*;\n\nclass Solution {\n    public List<List<Integer>> threeSum(int[] nums) {\n        Arrays.sort(nums);\n        List<List<Integer>> res = new ArrayList<>();\n        for (int i = 0; i < nums.length - 2; i++) {\n            if (i > 0 && nums[i] == nums[i-1]) continue;\n            int left = i + 1, right = nums.length - 1;\n            while (left < right) {\n                int sum = nums[i] + nums[left] + nums[right];\n                if (sum == 0) {\n                    res.add(Arrays.asList(nums[i], nums[left], nums[right]));\n                    while (left < right && nums[left] == nums[left+1]) left++;\n                    while (left < right && nums[right] == nums[right-1]) right--;\n                    left++; right--;\n                } else if (sum < 0) left++;\n                else right--;\n            }\n        }\n        return res;\n    }\n}`;
+        }
+      } else if (isSql) {
+        text += `• **SQL Joins & Aggregation**:\n  - **INNER JOIN**: Returns rows matching keys in both tables.\n  - **LEFT JOIN**: Returns all rows from left table plus matching right rows.`;
         code = `SELECT e.id, e.name, d.department_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.id;`;
+      } else if (qLower.includes('oops') || qLower.includes('object oriented')) {
+        text += `• **OOP Core Pillars**: Encapsulation, Inheritance, Polymorphism, Abstraction.`;
+        code = `class Developer:\n    def __init__(self, name, role):\n        self._name = name\n        self._role = role\n\n    def get_info(self):\n        return f"{self._name} ({self._role})"\n\ndev = Developer("Candidate", "Software Engineer")\nprint(dev.get_info())`;
       } else {
-        text += `• **Technical Approach**:\n  - Analyze problem constraints, inputs, and edge cases (null/empty data).\n  - Implement single-pass or hash-based lookup for optimal efficiency.\n• **Time Complexity**: O(N) optimal traversal.\n• **Space Complexity**: O(1) or O(N) memory allocation.`;
-        code = `// Solution implementation\npublic static void solve(int[] input) {\n    if (input == null || input.length == 0) return;\n    // Optimal algorithm execution\n}`;
+        text += `• **Technical Solution Approach**:\n  - Analyze constraints, inputs, and edge cases.\n  - Implement single-pass or hash-based lookup for optimal runtime.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1) or O(N).`;
+        if (isPython) {
+          code = `def solve(nums):\n    if not nums:\n        return None\n    return nums`;
+        } else {
+          code = `class Solution {\n    public static int solve(int[] nums) {\n        if (nums == null || nums.length == 0) return -1;\n        return nums[0];\n    }\n}`;
+        }
       }
 
       return { text, code };
@@ -416,14 +429,24 @@ Output strictly as JSON in the following format:
           {
             role: 'system',
             content: `You are a Senior Principal Software Engineer aiding a candidate in a live technical interview.
-Provide a DIRECT, COMPLETE, and SPECIFIC technical answer for the question.
-- Do NOT provide meta-coaching advice like "explain the core concept" or "mention trade-offs". Give the EXACT technical answer directly!
-- If the question involves algorithms, language features, data structures, or code (e.g. Java, Python, SQL, C++, JS), provide the COMPLETE working solution in the "code" field.
-- In the "text" field, explain the exact solution step-by-step with time and space complexities.
-Output strictly as JSON in the following format:
+Provide a DIRECT, COMPLETE, and SPECIFIC technical solution.
+
+STRICT LANGUAGE & CODE RULES:
+1. DETECT REQUESTED LANGUAGE:
+   - Identify the exact language requested in the question (e.g., Python, Java, SQL, C++, JavaScript, TypeScript, Go, Rust).
+   - If the user asks for Python (e.g. "Second largest element in python code"), YOU MUST OUTPUT CODE STICKING 100% STRICTLY TO PYTHON in the "code" field! Do NOT output Java or C++ when Python is requested!
+   - If the user asks for Java, output Java. If SQL, output SQL. If C++, output C++.
+
+2. COMPLETE WORKING CODE:
+   - In the "code" field, provide the FULL, COMPLETE, WORKING solution. Never output dummy placeholders or generic empty comments like "// Solution implementation"!
+
+3. TECHNICAL EXPLANATION:
+   - In the "text" field, explain the algorithm logic, key edge cases, Time Complexity O(...), and Space Complexity O(...).
+
+Output strictly as JSON:
 {
-  "text": "Direct technical explanation of the solution with complexities and key steps...",
-  "code": "Complete working code snippet"
+  "text": "Direct technical explanation with time/space complexity...",
+  "code": "Full working code in exact requested language"
 }`
           },
           {
