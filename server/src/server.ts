@@ -84,6 +84,8 @@ app.get('/api/download/desktop', (req, res) => {
 
   for (const exePath of possiblePaths) {
     if (fs.existsSync(exePath)) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="CareerCopilotSetup.exe"');
       return res.download(exePath, 'CareerCopilotSetup.exe');
     }
   }
