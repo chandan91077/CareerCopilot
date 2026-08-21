@@ -2,34 +2,36 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowRight, ShieldCheck, Sparkles, Terminal, FileText, 
-  Mic, Play, Layout, Download, Keyboard, Lock, HelpCircle 
+  Mic, Play, Layout, Download, Keyboard, Lock, HelpCircle,
+  Monitor, Cpu, CheckCircle2, Zap, Layers, RefreshCw
 } from 'lucide-react';
+import { getApiUrl } from '../services/api';
 
 export default function Landing() {
   const steps = [
     {
       num: '1',
-      title: 'Analyze Resume ATS',
-      desc: 'Upload your PDF resume and job description to compare ATS keywords and highlight critical skill gaps.',
+      title: '1. Upload PDF Resume & Sync',
+      desc: 'Upload your CV on the dashboard. CareerCopilot extracts ATS skills, checks job alignment, and auto-syncs with the AI Assistant.',
       icon: <FileText className="w-6 h-6 text-indigo-400" />
     },
     {
       num: '2',
-      title: 'Run AI Mock Session',
-      desc: 'Simulate live interview environments using real-time Speech-to-Text voice transcription in your browser.',
-      icon: <Mic className="w-6 h-6 text-purple-400" />
+      title: '2. Launch Desktop Overlay App',
+      desc: 'Download CareerCopilotSetup.exe for Windows. The overlay floats silently over your screen with screen capture & voice AI.',
+      icon: <Monitor className="w-6 h-6 text-purple-400" />
     },
     {
       num: '3',
-      title: 'Solve Monaco Algorithms',
-      desc: 'Write JavaScript and technical solutions inside our secure compilation sandbox editor.',
-      icon: <Terminal className="w-6 h-6 text-emerald-400" />
+      title: '3. Real-Time Speech & Screen Assistance',
+      desc: 'Press Ctrl + / to show/hide overlay during live interviews, Ctrl + Enter to capture screen, and speak with 3.5s pause detection.',
+      icon: <Mic className="w-6 h-6 text-emerald-400" />
     },
     {
       num: '4',
-      title: 'Review Performance Reports',
-      desc: 'Get granular feedback summaries structured by the STAR methodology detailing growth areas.',
-      icon: <Layout className="w-6 h-6 text-amber-400" />
+      title: '4. Voice Mock & Coding Sandbox',
+      desc: 'Practice voice interview rounds with STAR feedback or solve algorithm problems in our JS/Python/SQL sandbox VM.',
+      icon: <Terminal className="w-6 h-6 text-amber-400" />
     }
   ];
 
@@ -67,11 +69,11 @@ export default function Landing() {
   ];
 
   const controls = [
-    { key: 'Space', desc: 'Activate speech recording' },
-    { key: 'Ctrl + Enter', desc: 'Compile Monaco editor code' },
-    { key: 'Ctrl + [', desc: 'Move to previous question' },
-    { key: 'Ctrl + ]', desc: 'Skip to next question' },
-    { key: 'Esc', desc: 'Exit mock interview mode' }
+    { key: 'Ctrl + /', desc: 'Toggle overlay window visibility' },
+    { key: 'Ctrl + Enter', desc: 'Capture active screen & analyze code' },
+    { key: 'Ctrl + [ / ]', desc: 'Navigate previous / next answer in history' },
+    { key: 'Ctrl + Arrow Keys', desc: 'Move floating assistant overlay window' },
+    { key: '3.5s Pause', desc: 'Auto-finalizes speech & triggers AI response' }
   ];
 
   const pricingSteps = [
@@ -293,14 +295,11 @@ export default function Landing() {
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
-              href="#" 
-              onClick={(e) => {
-                e.preventDefault();
-                alert('The setup installation installer is available in the desktop folder distribution release structure: release/InterviewAISetup.exe');
-              }}
-              className="w-full sm:w-auto px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/10 cursor-pointer"
+              href={getApiUrl('/api/download/desktop')}
+              download="CareerCopilotSetup.exe"
+              className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
             >
-              <Download className="w-4 h-4" /> Download Installer (.exe)
+              <Download className="w-4 h-4" /> Download Windows App (.exe)
             </a>
             <span className="text-[10px] text-zinc-500 font-mono">Compatible with Windows 10/11 x64</span>
           </div>
