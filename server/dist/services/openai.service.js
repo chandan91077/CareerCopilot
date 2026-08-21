@@ -19,13 +19,13 @@ const getOpenAIClient = () => {
     if (groqKey && groqKey.trim().length > 0) {
         return {
             client: new openai_1.default({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-            model: 'llama-3.3-70b',
+            model: 'llama-3.1-8b-instant',
             visionModel: 'llama-3.2-11b-vision-preview'
         };
     }
     return null;
 };
-async function createChatCompletionWithFallback(ai, payload, fallbackModels = ['llama-3.3-70b', 'llama-3.1-8b-instant', 'llama-3.3-8b']) {
+async function createChatCompletionWithFallback(ai, payload, fallbackModels = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']) {
     const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
     let lastError;
     for (const modelName of modelsToTry) {
@@ -138,14 +138,13 @@ class OpenAIService {
             return mocks.resumeReview;
         }
         const systemPrompt = await getSystemPrompt('resume_review');
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Resume text:\n${resumeText}` }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async compareResumeWithJD(resumeText, jdText) {
@@ -154,14 +153,13 @@ class OpenAIService {
             return mocks.compareJD;
         }
         const systemPrompt = await getSystemPrompt('resume_compare');
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async generateNextQuestion(category, experience, questionHistory = []) {
@@ -177,8 +175,7 @@ class OpenAIService {
             return unused.length > 0 ? unused[0] : defaultQuestions[0];
         }
         const systemPrompt = await getSystemPrompt('interview_question');
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 { role: 'system', content: systemPrompt },
                 {
@@ -186,7 +183,7 @@ class OpenAIService {
                     content: `Category: ${category}\nExperience: ${experience}\nHistory of asked questions: ${JSON.stringify(questionHistory)}`
                 }
             ]
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
     }
     static async evaluateAnswer(question, userAnswer, category) {
@@ -195,14 +192,13 @@ class OpenAIService {
             return mocks.behavioralReview;
         }
         const systemPrompt = await getSystemPrompt('answer_evaluator');
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async evaluateCodingSolution(questionTitle, description, code, language) {
@@ -211,8 +207,7 @@ class OpenAIService {
             return mocks.codingReview;
         }
         const systemPrompt = await getSystemPrompt('coding_evaluator');
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 { role: 'system', content: systemPrompt },
                 {
@@ -221,7 +216,7 @@ class OpenAIService {
                 }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async evaluateBehavioralAnswer(question, userAnswer) {
@@ -229,8 +224,7 @@ class OpenAIService {
         if (!ai) {
             return mocks.behavioralReview;
         }
-        const response = await ai.client.chat.completions.create({
-            model: ai.model,
+        const response = await createChatCompletionWithFallback(ai, {
             messages: [
                 {
                     role: 'system',
@@ -250,7 +244,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
                 { role: 'user', content: `Behavioral Question: ${question}\nAnswer: ${userAnswer}` }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async analyzeScreen(base64Image, resumeText) {

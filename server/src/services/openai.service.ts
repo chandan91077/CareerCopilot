@@ -21,7 +21,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
   if (groqKey && groqKey.trim().length > 0) {
     return {
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      model: 'llama-3.3-70b',
+      model: 'llama-3.1-8b-instant',
       visionModel: 'llama-3.2-11b-vision-preview'
     };
   }
@@ -32,7 +32,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
 async function createChatCompletionWithFallback(
   ai: AIClientConfig,
   payload: any,
-  fallbackModels: string[] = ['llama-3.3-70b', 'llama-3.1-8b-instant', 'llama-3.3-8b']
+  fallbackModels: string[] = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']
 ) {
   const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
 
@@ -151,14 +151,13 @@ export class OpenAIService {
     }
 
     const systemPrompt = await getSystemPrompt('resume_review');
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Resume text:\n${resumeText}` }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -170,14 +169,13 @@ export class OpenAIService {
     }
 
     const systemPrompt = await getSystemPrompt('resume_compare');
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -196,8 +194,7 @@ export class OpenAIService {
     }
 
     const systemPrompt = await getSystemPrompt('interview_question');
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -205,7 +202,7 @@ export class OpenAIService {
           content: `Category: ${category}\nExperience: ${experience}\nHistory of asked questions: ${JSON.stringify(questionHistory)}`
         }
       ]
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
   }
@@ -217,14 +214,13 @@ export class OpenAIService {
     }
 
     const systemPrompt = await getSystemPrompt('answer_evaluator');
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -236,8 +232,7 @@ export class OpenAIService {
     }
 
     const systemPrompt = await getSystemPrompt('coding_evaluator');
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -246,7 +241,7 @@ export class OpenAIService {
         }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -257,8 +252,7 @@ export class OpenAIService {
       return mocks.behavioralReview;
     }
 
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         {
           role: 'system',
@@ -278,7 +272,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
         { role: 'user', content: `Behavioral Question: ${question}\nAnswer: ${userAnswer}` }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'llama-3.3-70b-specdec']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }

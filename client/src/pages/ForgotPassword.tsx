@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
-import { Mail, Key, Loader2, ArrowLeft, Send } from 'lucide-react';
+import { Mail, Key, Loader2, ArrowLeft, Send, Sun, Moon } from 'lucide-react';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -12,6 +12,15 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark' ||
+      (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
 
   const handleRequestToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,29 +65,39 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-dark-950 to-black p-4">
-      <div className="w-full max-w-md bg-dark-900/60 border border-slate-800/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-        {/* Glow accent */}
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-200 via-white to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-black p-4 transition-colors duration-200">
+      <div className="absolute top-5 right-5 z-20">
+        <button
+          type="button"
+          onClick={() => setIsDarkMode(!isDarkMode)}
+          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 text-slate-700 dark:text-slate-200 shadow-sm transition-colors"
+          aria-label="Toggle theme"
+        >
+          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+      </div>
+
+      <div className="w-full max-w-md bg-white/80 dark:bg-dark-900/60 border border-slate-200 dark:border-slate-800/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl relative overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-indigo-500/20 rounded-full blur-[100px] pointer-events-none" />
 
         <div className="text-center mb-8 relative z-10">
           <span className="text-4xl">🔑</span>
-          <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mt-3">
+          <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent mt-3">
             Reset Password
           </h2>
-          <p className="text-slate-400 text-sm mt-2">
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
             {step === 1 ? 'Enter your email to request recovery' : 'Submit your verification token and new password'}
           </p>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm text-center">
+          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-sm text-center">
             {error}
           </div>
         )}
 
         {message && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm text-center">
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm text-center">
             {message}
           </div>
         )}
@@ -86,7 +105,7 @@ export default function ForgotPassword() {
         {step === 1 ? (
           <form onSubmit={handleRequestToken} className="space-y-5 relative z-10">
             <div>
-              <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Email Address</label>
+              <label className="block text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Email Address</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
                   <Mail className="w-4 h-4" />
@@ -97,7 +116,7 @@ export default function ForgotPassword() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-3 bg-dark-950 border border-slate-800 rounded-xl focus:border-indigo-500 text-slate-100 placeholder-slate-500 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-dark-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -113,7 +132,7 @@ export default function ForgotPassword() {
         ) : (
           <form onSubmit={handleResetPassword} className="space-y-5 relative z-10">
             <div>
-              <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Verification Code</label>
+              <label className="block text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Verification Code</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
                   <Key className="w-4 h-4" />
@@ -124,20 +143,20 @@ export default function ForgotPassword() {
                   value={token}
                   onChange={e => setToken(e.target.value)}
                   placeholder="Check server console..."
-                  className="w-full pl-10 pr-4 py-3 bg-dark-950 border border-slate-800 rounded-xl focus:border-indigo-500 text-slate-100 placeholder-slate-500 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-dark-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-500 outline-none transition-all"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">New Password</label>
+              <label className="block text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">New Password</label>
               <input
                 type="password"
                 required
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 bg-dark-950 border border-slate-800 rounded-xl focus:border-indigo-500 text-slate-100 placeholder-slate-500 outline-none transition-all"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-dark-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-500 outline-none transition-all"
               />
             </div>
 
@@ -152,7 +171,7 @@ export default function ForgotPassword() {
         )}
 
         <div className="mt-8 text-center relative z-10">
-          <Link to="/login" className="inline-flex items-center text-sm font-semibold text-slate-400 hover:text-slate-200">
+          <Link to="/login" className="inline-flex items-center text-sm font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
           </Link>
         </div>
