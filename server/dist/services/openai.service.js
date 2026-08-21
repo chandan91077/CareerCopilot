@@ -19,13 +19,13 @@ const getOpenAIClient = () => {
     if (groqKey && groqKey.trim().length > 0) {
         return {
             client: new openai_1.default({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-            model: 'llama-3.1-70b-versatile',
+            model: 'llama-3.3-70b',
             visionModel: 'llama-3.2-11b-vision-preview'
         };
     }
     return null;
 };
-async function createChatCompletionWithFallback(ai, payload, fallbackModels = ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant']) {
+async function createChatCompletionWithFallback(ai, payload, fallbackModels = ['llama-3.3-70b', 'llama-3.1-8b-instant', 'llama-3.3-8b']) {
     const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
     let lastError;
     for (const modelName of modelsToTry) {
@@ -294,7 +294,7 @@ Output strictly as JSON in the following format:
                 }
             ],
             response_format: { type: 'json_object' }
-        }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']);
+        }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b']);
         return JSON.parse(response.choices[0].message.content || '{}');
     }
     static async answerAssistantQuery(question, resumeText) {

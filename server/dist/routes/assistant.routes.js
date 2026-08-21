@@ -87,7 +87,7 @@ router.post('/ask', auth_middleware_1.optionalAuthMiddleware, async (req, res) =
         return res.json({
             success: true,
             answer: {
-                text: 'Error generating response. Please try again or ask the question differently.',
+                text: `I couldn’t generate an answer right now. Please try again with a clearer question. ${error?.message ? `Detail: ${error.message}` : ''}`.trim(),
                 code: ''
             }
         });
