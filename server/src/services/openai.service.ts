@@ -7,6 +7,15 @@ interface AIClientConfig {
   visionModel: string;
 }
 
+const GROQ_TEXT_FALLBACKS = [
+  'llama-3.3-70b-versatile',
+  'llama3-70b-8192',
+  'llama3-8b-8192',
+  'mixtral-8x7b-32768',
+  'deepseek-r1-distill-llama-70b',
+  'llama-3.1-8b-instant'
+];
+
 const getOpenAIClient = (): AIClientConfig | null => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (openaiKey && openaiKey.trim().length > 0) {
@@ -32,9 +41,9 @@ const getOpenAIClient = (): AIClientConfig | null => {
 async function createChatCompletionWithFallback(
   ai: AIClientConfig,
   payload: any,
-  fallbackModels: string[] = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
+  fallbackModels: string[] = GROQ_TEXT_FALLBACKS
 ) {
-  const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
+  const modelsToTry = Array.from(new Set([ai.model, ...fallbackModels]));
 
   let lastError: any;
   for (const modelName of modelsToTry) {
@@ -63,7 +72,7 @@ async function createChatCompletionWithFallback(
   throw lastError;
 }
 
-// Fallback Mock Responses for development if API key is not present
+// Fallback Mock Responses for development if API key is not present or fails
 const mocks = {
   resumeReview: {
     summary: "Senior Software Engineer with solid experience in building scalable web applications. Strong expertise in TypeScript, React, Node.js, and cloud architectures. Demonstrated history of leading small teams and delivering robust code.",
@@ -155,16 +164,21 @@ export class OpenAIService {
       return mocks.resumeReview;
     }
 
-    const systemPrompt = await getSystemPrompt('resume_review');
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Resume text:\n${resumeText}` }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    try {
+      const systemPrompt = await getSystemPrompt('resume_review');
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Resume text:\n${resumeText}` }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.reviewResume] AI error, returning fallback parsed resume:', err);
+      return mocks.resumeReview;
+    }
   }
 
   static async compareResumeWithJD(resumeText: string, jdText: string) {
@@ -173,43 +187,55 @@ export class OpenAIService {
       return mocks.compareJD;
     }
 
-    const systemPrompt = await getSystemPrompt('resume_compare');
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    try {
+      const systemPrompt = await getSystemPrompt('resume_compare');
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Resume:\n${resumeText}\n\nJob Description:\n${jdText}` }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.compareResumeWithJD] AI error, returning fallback comparison:', err);
+      return mocks.compareJD;
+    }
   }
 
   static async generateNextQuestion(category: string, experience: string, questionHistory: string[] = []): Promise<string> {
     const ai = getOpenAIClient();
+    const defaultQuestions = [
+      "What are the differences between SQL and NoSQL databases?",
+      "Explain how the Event Loop works in Node.js.",
+      "How would you optimize web app performance?",
+      "Describe a time when you solved a complex production bug."
+    ];
+
     if (!ai) {
-      const defaultQuestions = [
-        "What are the differences between SQL and NoSQL databases?",
-        "Explain how the Event Loop works in Node.js.",
-        "How would you optimize web app performance?",
-        "Describe a time when you solved a complex production bug."
-      ];
       const unused = defaultQuestions.filter(q => !questionHistory.includes(q));
       return unused.length > 0 ? unused[0] : defaultQuestions[0];
     }
 
-    const systemPrompt = await getSystemPrompt('interview_question');
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: `Category: ${category}\nExperience: ${experience}\nHistory of asked questions: ${JSON.stringify(questionHistory)}`
-        }
-      ]
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    try {
+      const systemPrompt = await getSystemPrompt('interview_question');
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `Category: ${category}\nExperience: ${experience}\nHistory of asked questions: ${JSON.stringify(questionHistory)}`
+          }
+        ]
+      }, GROQ_TEXT_FALLBACKS);
 
-    return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
+      return response.choices[0].message.content?.trim() || "Can you describe your project experiences?";
+    } catch (err) {
+      console.warn('[OpenAIService.generateNextQuestion] AI error, returning default question:', err);
+      const unused = defaultQuestions.filter(q => !questionHistory.includes(q));
+      return unused.length > 0 ? unused[0] : defaultQuestions[0];
+    }
   }
 
   static async evaluateAnswer(question: string, userAnswer: string, category: string) {
@@ -218,16 +244,21 @@ export class OpenAIService {
       return mocks.behavioralReview;
     }
 
-    const systemPrompt = await getSystemPrompt('answer_evaluator');
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    try {
+      const systemPrompt = await getSystemPrompt('answer_evaluator');
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Question: ${question}\nUser Answer: ${userAnswer}\nCategory: ${category}` }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.evaluateAnswer] AI error, returning fallback evaluation:', err);
+      return mocks.behavioralReview;
+    }
   }
 
   static async evaluateCodingSolution(questionTitle: string, description: string, code: string, language: string) {
@@ -236,19 +267,24 @@ export class OpenAIService {
       return mocks.codingReview;
     }
 
-    const systemPrompt = await getSystemPrompt('coding_evaluator');
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: `Question Title: ${questionTitle}\nDescription: ${description}\nLanguage: ${language}\nCode:\n${code}`
-        }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    try {
+      const systemPrompt = await getSystemPrompt('coding_evaluator');
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `Question Title: ${questionTitle}\nDescription: ${description}\nLanguage: ${language}\nCode:\n${code}`
+          }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.evaluateCodingSolution] AI error, returning fallback coding evaluation:', err);
+      return mocks.codingReview;
+    }
   }
 
   static async evaluateBehavioralAnswer(question: string, userAnswer: string) {
@@ -257,11 +293,12 @@ export class OpenAIService {
       return mocks.behavioralReview;
     }
 
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert HR coach specialized in the STAR method (Situation, Task, Action, Result).
+    try {
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert HR coach specialized in the STAR method (Situation, Task, Action, Result).
 Evaluate the user response against the STAR method for behavioral answers. Highlight the rating, score, and constructive tips. Output strictly as JSON:
 {
   "score": 88,
@@ -273,30 +310,35 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
     "completeness": 88
   }
 }`
-        },
-        { role: 'user', content: `Behavioral Question: ${question}\nAnswer: ${userAnswer}` }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+          },
+          { role: 'user', content: `Behavioral Question: ${question}\nAnswer: ${userAnswer}` }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.evaluateBehavioralAnswer] AI error, returning fallback behavioral review:', err);
+      return mocks.behavioralReview;
+    }
   }
 
   static async analyzeScreen(base64Image: string, resumeText: string) {
     const ai = getOpenAIClient();
     if (!ai) {
       return {
-        questionDetected: "Simulated question: 'How do you design a high-availability backend cluster?'",
-        hint: "Be sure to mention stateless API servers, load balancing (Nginx/HAProxy), database replication (primary-replica), and standard fallback caching (Redis) matching your Node/Express experience.",
-        codeSnippet: "// Mock Javascript structural design\nconst cluster = require('cluster');\nif (cluster.isPrimary) { ... }"
+        questionDetected: "Screen Captured",
+        hint: "Be sure to mention stateless API servers, load balancing, database replication, and fallback caching matching your technical experience.",
+        codeSnippet: ""
       };
     }
 
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert real-time mock interview companion.
+    try {
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert real-time mock interview companion.
 Review the screen capture showing the technical question, slide, or code prompt.
 Identify the question/problem on screen.
 Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
@@ -306,42 +348,64 @@ Output strictly as JSON in the following format:
   "hint": "Constructive hints and guidelines to speak or explain based on the user's resume...",
   "codeSnippet": "Optional code block in correct language if it is a coding question, else empty string"
 }`
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Candidate's Resume:\n${resumeText}`
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Candidate's Resume:\n${resumeText}`
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
+                }
               }
-            }
-          ]
-        }
-      ],
-      response_format: { type: 'json_object' }
-    }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile']);
+            ]
+          }
+        ],
+        response_format: { type: 'json_object' }
+      }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile']);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
-  }
-  static async answerAssistantQuery(question: string, resumeText: string) {
-    const ai = getOpenAIClient();
-    if (!ai) {
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err) {
+      console.warn('[OpenAIService.analyzeScreen] AI vision error, returning fallback screen response:', err);
       return {
-        text: "Mock AI Answer: Ensure you listen carefully and break down your answer using the STAR method if it's a behavioral question. For technical questions, mention trade-offs.",
-        code: "// Simulated fallback code\nconsole.log('OpenAI / Groq API Key missing');"
+        questionDetected: "Question detected on screen",
+        hint: "I detected content on your screen. Speak or type your question directly into the chat for a precise AI answer.",
+        codeSnippet: ""
       };
     }
+  }
 
-    const response = await createChatCompletionWithFallback(ai, {
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert real-time mock interview companion.
+  static async answerAssistantQuery(question: string, resumeText: string) {
+    const ai = getOpenAIClient();
+    const fallbackAnswer = () => {
+      const qLower = question.toLowerCase();
+      let text = `Here is an interview answer framework for "${question}":\n\n`;
+      let code = "";
+
+      if (qLower.includes('oops') || qLower.includes('object oriented')) {
+        text += `• **OOP in Python**: Object-Oriented Programming uses Classes and Objects to structure code through Encapsulation, Inheritance, Polymorphism, and Abstraction.\n• **Classes & Instances**: A class defines state and methods; \`__init__\` initializes object attributes.\n• **Encapsulation & Reusability**: Protects internal data and promotes clean code design.`;
+        code = `class Developer:\n    def __init__(self, name, role):\n        self.name = name\n        self.role = role\n\n    def get_info(self):\n        return f"{self.name} - {self.role}"\n\ndev = Developer("Chandan", "Full Stack Engineer")\nprint(dev.get_info())`;
+      } else {
+        text += `• **Core Concept**: Explain the fundamental mechanism and main usage clearly.\n• **Key Features**: Highlight performance considerations, data structures, and trade-offs.\n• **Practical Application**: Relate to real-world development experience on your resume.`;
+      }
+
+      return { text, code };
+    };
+
+    if (!ai) {
+      return fallbackAnswer();
+    }
+
+    try {
+      const response = await createChatCompletionWithFallback(ai, {
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert real-time mock interview companion.
 The user is currently in an interview. You will receive transcribed audio (either the interviewer asking a question, or the user speaking).
 Provide tailored coaching hints and short code snippets based on the user's resume text to help them answer or write code during their practice session.
 Keep the answer concise (under 90 seconds to read) and use bullet points where applicable.
@@ -350,16 +414,20 @@ Output strictly as JSON in the following format:
   "text": "Constructive hints and guidelines to speak or explain based on the user's resume...",
   "code": "Optional code block in correct language if it is a coding question, else empty string"
 }`
-        },
-        {
-          role: 'user',
-          content: `Candidate's Resume:\n${resumeText}\n\nTranscribed Audio/Question:\n${question}`
-        }
-      ],
-      response_format: { type: 'json_object' }
-    });
+          },
+          {
+            role: 'user',
+            content: `Candidate's Resume:\n${resumeText}\n\nTranscribed Audio/Question:\n${question}`
+          }
+        ],
+        response_format: { type: 'json_object' }
+      }, GROQ_TEXT_FALLBACKS);
 
-    return JSON.parse(response.choices[0].message.content || '{}');
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err: any) {
+      console.warn('[OpenAIService.answerAssistantQuery] AI error, returning fallback answer:', err?.message || err);
+      return fallbackAnswer();
+    }
   }
 
   static async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
