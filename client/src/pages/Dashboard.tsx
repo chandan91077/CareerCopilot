@@ -125,16 +125,22 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-[11px] font-bold text-indigo-200 uppercase tracking-wider mb-2">App & Plan Settings</p>
-              <div className="flex flex-col gap-2 mt-1">
-                <span className="text-xs font-semibold text-indigo-100">Active Tier: <span className="uppercase text-white font-bold bg-white/20 px-2 py-0.5 rounded ml-1 border border-white/10">{currentPlan}</span></span>
-                <a 
-                  href={getApiUrl('/api/download/desktop')}
-                  download="InterviewAISetup.exe"
-                  className="w-fit px-4 py-2 mt-2 bg-white text-indigo-700 hover:bg-indigo-50 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer no-underline"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download Windows App (.exe)
-                </a>
-              </div>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <a 
+                    href={getApiUrl('/api/download/desktop')}
+                    download="CareerCopilotSetup.exe"
+                    className="px-4 py-2 bg-white text-indigo-700 hover:bg-indigo-50 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer no-underline"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download App (.exe)
+                  </a>
+                  <a 
+                    href={getApiUrl('/api/download/desktop?format=zip')}
+                    download="CareerCopilotSetup.zip"
+                    className="px-4 py-2 bg-indigo-900/60 hover:bg-indigo-900/80 text-white border border-indigo-300/30 font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer no-underline"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-200" /> Download (.zip)
+                  </a>
+                </div>
             </div>
           </div>
         </div>

@@ -69,24 +69,26 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/screen-share', screenShareRoutes);
 
-// Desktop EXE Installer Download Endpoint
+// Desktop EXE / ZIP Installer Download Endpoint
 app.get('/api/download/desktop', (req, res) => {
+  const isZip = req.query.format === 'zip';
+  const filename = isZip ? 'CareerCopilotSetup.zip' : 'CareerCopilotSetup.exe';
+  const mimeType = isZip ? 'application/zip' : 'application/octet-stream';
+
   const possiblePaths = [
+    path.join(__dirname, `../public/downloads/${filename}`),
+    path.join(__dirname, `../../desktop/release/${filename}`),
+    path.join(process.cwd(), `public/downloads/${filename}`),
+    path.join(process.cwd(), `../desktop/release/${filename}`),
     path.join(__dirname, '../public/downloads/CareerCopilotSetup.exe'),
-    path.join(__dirname, '../../desktop/release/CareerCopilotSetup.exe'),
-    path.join(process.cwd(), 'public/downloads/CareerCopilotSetup.exe'),
-    path.join(process.cwd(), '../desktop/release/CareerCopilotSetup.exe'),
-    path.join(__dirname, '../public/downloads/InterviewAISetup.exe'),
-    path.join(__dirname, '../../desktop/release/InterviewAISetup.exe'),
-    path.join(process.cwd(), 'public/downloads/InterviewAISetup.exe'),
-    path.join(process.cwd(), '../desktop/release/InterviewAISetup.exe')
+    path.join(__dirname, '../../desktop/release/CareerCopilotSetup.exe')
   ];
 
   for (const exePath of possiblePaths) {
     if (fs.existsSync(exePath)) {
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', 'attachment; filename="CareerCopilotSetup.exe"');
-      return res.download(exePath, 'CareerCopilotSetup.exe');
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.download(exePath, filename);
     }
   }
 
