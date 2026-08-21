@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, Trash2, Shield, User, Loader2, Search, Check, X, CreditCard 
+  Users, Trash2, Shield, User, Loader2, Search, Check, X 
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -39,18 +39,6 @@ export default function AdminUserMgmt() {
     }
   };
 
-  const handleChangePlan = async (userId: string, newPlan: string) => {
-    setActionLoading(userId);
-    try {
-      await api.put(`/admin/users/${userId}/plan`, { plan: newPlan });
-      setUsers(prev => prev.map(u => u._id === userId ? { ...u, plan: newPlan } : u));
-    } catch (err) {
-      alert('Failed to modify user subscription plan.');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const handleDeleteUser = async (userId: string) => {
     if (!window.confirm('Are you sure you want to permanently delete this user and their profile details?')) {
       return;
@@ -71,11 +59,8 @@ export default function AdminUserMgmt() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-850 dark:text-slate-100 flex items-center gap-3">
-          <Users className="w-8 h-8 text-rose-500" />
-          User & Subscription Management
-        </h1>
-        <p className="text-slate-500 mt-1">Review accounts, adjust authorization roles, and manage user subscription plans (Free, Basic, Premium).</p>
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-850 dark:text-slate-100">User Account Management</h1>
+        <p className="text-slate-500 mt-1">Review verified users, adjust account permission roles, and delete inactive profiles.</p>
       </div>
 
       <div className="flex gap-4">
@@ -122,24 +107,15 @@ export default function AdminUserMgmt() {
                   <tr key={item._id} className="hover:bg-slate-55/10">
                     <td className="p-4 font-bold">{item.email}</td>
                     <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={item.plan || 'free'}
-                          disabled={actionLoading === item._id}
-                          onChange={(e) => handleChangePlan(item._id, e.target.value)}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold uppercase cursor-pointer outline-none focus:ring-2 focus:ring-rose-500 transition-all ${
-                            item.plan === 'premium'
-                              ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30'
-                              : item.plan === 'basic'
-                              ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
-                              : 'bg-slate-100 dark:bg-dark-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                          }`}
-                        >
-                          <option value="free" className="bg-white dark:bg-dark-900 text-slate-800 dark:text-white">Free Plan</option>
-                          <option value="basic" className="bg-white dark:bg-dark-900 text-indigo-600 dark:text-indigo-400">Basic Plan ($19/mo)</option>
-                          <option value="premium" className="bg-white dark:bg-dark-900 text-purple-600 dark:text-purple-400">Premium Plan ($49/mo)</option>
-                        </select>
-                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-extrabold ${
+                        item.plan === 'premium' 
+                          ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' 
+                          : item.plan === 'basic' 
+                          ? 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20' 
+                          : 'bg-slate-100 text-slate-400 dark:bg-dark-800'
+                      }`}>
+                        {item.plan}
+                      </span>
                     </td>
                     <td className="p-4">
                       {item.isVerified ? (

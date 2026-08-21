@@ -118,26 +118,31 @@ export function useScreenShare() {
         }
 
         if (sourceIdToUse) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: false,
-              video: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: sourceIdToUse,
-                },
-              } as any,
-            });
-          } catch (err1) {
-            console.warn('[SCREEN-SHARE] getUserMedia with sourceId failed, falling back to getDisplayMedia:', err1);
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceIdToUse,
+                minWidth: 1280,
+                maxWidth: 1920,
+                minHeight: 720,
+                maxHeight: 1080,
+              },
+            } as any,
+          });
         } else {
-          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' } as any,
+            audio: false,
+          });
         }
       } else {
         // Browser standard display media prompt (explicit candidate selection)
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' } as any,
+          audio: false,
+        });
       }
 
       mediaStreamRef.current = stream;
@@ -242,6 +247,14 @@ export function useScreenShare() {
           }
         } catch (err: any) {
           console.error('[WEBRTC:CANDIDATE] Error adding ICE candidate:', err);
+        }
+      });
+
+      // Handle incoming remote mouse & keyboard control inputs from viewer
+      socket.on('screen-share:remote-input', ({ input }) => {
+        const isElectron = !!(window as any).electronAPI;
+        if (isElectron && (window as any).electronAPI?.executeRemoteInput) {
+          (window as any).electronAPI.executeRemoteInput(input);
         }
       });
 
@@ -412,6 +425,18 @@ export function useScreenShare() {
     setStatus('idle');
   }, [cleanup]);
 
+  /**
+   * Viewer: Send remote mouse/keyboard control input to candidate host
+   */
+  const sendRemoteInput = useCallback((input: any) => {
+    if (socketRef.current && activeSession?.sessionId) {
+      socketRef.current.emit('screen-share:remote-input', {
+        sessionId: activeSession.sessionId,
+        input,
+      });
+    }
+  }, [activeSession]);
+
   return {
     status,
     errorMsg,
@@ -422,5 +447,6 @@ export function useScreenShare() {
     stopScreenShare,
     joinScreenShare,
     disconnectViewer,
+    sendRemoteInput,
   };
 }

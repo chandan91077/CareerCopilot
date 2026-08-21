@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Tv, 
   Lock, 
@@ -6,12 +6,12 @@ import {
   LogIn, 
   Square, 
   AlertCircle, 
-  CheckCircle2, 
   Clock, 
-  Wifi, 
   WifiOff, 
   Eye, 
-  EyeOff 
+  EyeOff,
+  MousePointer,
+  Keyboard
 } from 'lucide-react';
 import { useScreenShare, ScreenShareStatus } from '../services/useScreenShare';
 
@@ -23,13 +23,17 @@ export default function ScreenShareViewer() {
     remoteStream,
     joinScreenShare,
     disconnectViewer,
+    sendRemoteInput,
   } = useScreenShare();
 
   const [sessionId, setSessionId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [remoteControlEnabled, setRemoteControlEnabled] = useState(true);
 
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastMoveTimeRef = useRef<number>(0);
 
   // Attach remote stream to video element
   useEffect(() => {
@@ -37,6 +41,73 @@ export default function ScreenShareViewer() {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream]);
+
+  const getNormalizedCoordinates = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return { xRatio: 0.5, yRatio: 0.5 };
+    const rect = containerRef.current.getBoundingClientRect();
+    const xRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const yRatio = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    return { xRatio, yRatio };
+  }, []);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!remoteControlEnabled || status !== 'connected') return;
+    const now = Date.now();
+    if (now - lastMoveTimeRef.current < 30) return; // Throttle ~30ms
+    lastMoveTimeRef.current = now;
+
+    const { xRatio, yRatio } = getNormalizedCoordinates(e);
+    sendRemoteInput({ type: 'mousemove', xRatio, yRatio });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!remoteControlEnabled || status !== 'connected') return;
+    const { xRatio, yRatio } = getNormalizedCoordinates(e);
+    const button = e.button === 2 ? 'right' : 'left';
+    sendRemoteInput({ type: 'mousedown', button, xRatio, yRatio });
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!remoteControlEnabled || status !== 'connected') return;
+    const { xRatio, yRatio } = getNormalizedCoordinates(e);
+    const button = e.button === 2 ? 'right' : 'left';
+    sendRemoteInput({ type: 'mouseup', button, xRatio, yRatio });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!remoteControlEnabled || status !== 'connected') return;
+    const { xRatio, yRatio } = getNormalizedCoordinates(e);
+    sendRemoteInput({ type: 'click', button: 'right', xRatio, yRatio });
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!remoteControlEnabled || status !== 'connected') return;
+    sendRemoteInput({ type: 'wheel', deltaY: e.deltaY });
+  };
+
+  // Global keyboard listener when viewer is connected & remote control is ON
+  useEffect(() => {
+    if (!remoteControlEnabled || status !== 'connected') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture inputs if user is typing into input fields
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      sendRemoteInput({ type: 'keydown', key: e.key });
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      sendRemoteInput({ type: 'keyup', key: e.key });
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [remoteControlEnabled, status, sendRemoteInput]);
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +177,7 @@ export default function ScreenShareViewer() {
             Join Screen Sharing Session
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Enter the authorized candidate Session ID and Temporary Password to view real-time screen stream.
+            Enter the authorized candidate Session ID and Temporary Password to view real-time screen stream & remote control.
           </p>
         </div>
 
@@ -204,17 +275,28 @@ export default function ScreenShareViewer() {
           </div>
         </div>
       ) : (
-        /* Video Stream Player */
+        /* Video Stream Player with Remote Mouse & Keyboard Control */
         <div className="bg-white dark:bg-dark-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-2xl space-y-4">
-          {/* Top Video Header */}
+          {/* Top Video Control Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-4 px-2">
             <div className="flex items-center gap-3">
               <span className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-lg border border-indigo-200 dark:border-indigo-900/60">
                 Session: {activeSession?.sessionId}
               </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Encrypted WebRTC Peer Stream
-              </span>
+              
+              {/* Remote Control Toggle */}
+              <button
+                onClick={() => setRemoteControlEnabled(!remoteControlEnabled)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                  remoteControlEnabled
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                    : 'bg-slate-100 dark:bg-dark-800 text-slate-500 border-slate-300 dark:border-slate-700'
+                }`}
+              >
+                <MousePointer className="w-3.5 h-3.5" />
+                <Keyboard className="w-3.5 h-3.5" />
+                Remote Control: {remoteControlEnabled ? 'ON' : 'OFF'}
+              </button>
             </div>
 
             <button
@@ -226,14 +308,24 @@ export default function ScreenShareViewer() {
             </button>
           </div>
 
-          {/* Remote Screen Video Window */}
-          <div className="relative aspect-video w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+          {/* Remote Interactive Screen Window */}
+          <div
+            ref={containerRef}
+            onMouseMove={handleMouseMove}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onContextMenu={handleContextMenu}
+            onWheel={handleWheel}
+            className={`relative aspect-video w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center ${
+              remoteControlEnabled ? 'cursor-crosshair' : 'cursor-default'
+            }`}
+          >
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
               controls={false}
-              className="w-full h-full object-contain bg-black"
+              className="w-full h-full object-contain bg-black select-none pointer-events-none"
             />
           </div>
         </div>

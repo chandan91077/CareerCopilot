@@ -122,13 +122,49 @@ async function captureActiveScreenBase64() {
 }
 
 let SetWindowDisplayAffinity = null;
+let SetCursorPos = null;
+let mouse_event = null;
+let keybd_event = null;
+let GetSystemMetrics = null;
+
 try {
   const koffi = require('koffi');
   const user32 = koffi.load('user32.dll');
   SetWindowDisplayAffinity = user32.func('bool SetWindowDisplayAffinity(uint64 hWnd, uint32 dwAffinity)');
-  console.log('[WIN32] Loaded SetWindowDisplayAffinity via koffi FFI');
+  SetCursorPos = user32.func('bool SetCursorPos(int x, int y)');
+  mouse_event = user32.func('void mouse_event(uint32 dwFlags, uint32 dx, uint32 dy, uint32 dwData, uint64 dwExtraInfo)');
+  keybd_event = user32.func('void keybd_event(uint8 bVk, uint8 bScan, uint32 dwFlags, uint64 dwExtraInfo)');
+  GetSystemMetrics = user32.func('int GetSystemMetrics(int nIndex)');
+  console.log('[WIN32] Loaded SetWindowDisplayAffinity & Remote Control APIs via koffi FFI');
 } catch (e) {
   console.warn('[WIN32] Could not load koffi FFI:', e.message);
+}
+
+function getVirtualKeyCode(key) {
+  if (!key) return 0;
+  if (key.length === 1) {
+    const code = key.toUpperCase().charCodeAt(0);
+    if ((code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5A)) {
+      return code;
+    }
+  }
+  const keyMap = {
+    'Enter': 0x0D,
+    'Backspace': 0x08,
+    'Tab': 0x09,
+    'Escape': 0x1B,
+    'Space': 0x20,
+    ' ': 0x20,
+    'ArrowLeft': 0x25,
+    'ArrowUp': 0x26,
+    'ArrowRight': 0x27,
+    'ArrowDown': 0x28,
+    'Delete': 0x2E,
+    'Shift': 0x10,
+    'Control': 0x11,
+    'Alt': 0x12,
+  };
+  return keyMap[key] || 0;
 }
 
 function applyWin32ContentProtection(win) {
@@ -390,6 +426,51 @@ app.whenReady().then(() => {
   // ─── Mic/speaker diagnostic ping ─────────────────────────────
   ipcMain.handle('check-media-permissions', async () => {
     return { granted: true, message: 'Permissions granted at Electron level' };
+  });
+
+  // ─── Execute remote mouse / keyboard control from viewer ──────
+  ipcMain.handle('execute-remote-input', (event, input) => {
+    if (process.platform !== 'win32' || !SetCursorPos || !mouse_event) return;
+
+    try {
+      const screenW = GetSystemMetrics ? GetSystemMetrics(0) : 1920;
+      const screenH = GetSystemMetrics ? GetSystemMetrics(1) : 1080;
+
+      if (typeof input.xRatio === 'number' && typeof input.yRatio === 'number') {
+        const targetX = Math.round(input.xRatio * screenW);
+        const targetY = Math.round(input.yRatio * screenH);
+        SetCursorPos(targetX, targetY);
+      }
+
+      if (input.type === 'mousedown' || input.type === 'mouseup' || input.type === 'click') {
+        let downFlag = 0x0002; // MOUSEEVENTF_LEFTDOWN
+        let upFlag = 0x0004;   // MOUSEEVENTF_LEFTUP
+        if (input.button === 'right' || input.button === 2) {
+          downFlag = 0x0008; // MOUSEEVENTF_RIGHTDOWN
+          upFlag = 0x0010;   // MOUSEEVENTF_RIGHTUP
+        }
+
+        if (input.type === 'mousedown') {
+          mouse_event(downFlag, 0, 0, 0, 0);
+        } else if (input.type === 'mouseup') {
+          mouse_event(upFlag, 0, 0, 0, 0);
+        } else if (input.type === 'click') {
+          mouse_event(downFlag, 0, 0, 0, 0);
+          mouse_event(upFlag, 0, 0, 0, 0);
+        }
+      } else if (input.type === 'wheel') {
+        const delta = input.deltaY < 0 ? 120 : -120;
+        mouse_event(0x0800, 0, 0, delta, 0); // MOUSEEVENTF_WHEEL
+      } else if (input.type === 'keydown' || input.type === 'keyup') {
+        const vk = getVirtualKeyCode(input.key);
+        if (vk) {
+          const flag = input.type === 'keyup' ? 0x0002 : 0x0000;
+          keybd_event(vk, 0, flag, 0);
+        }
+      }
+    } catch (err) {
+      console.error('[WIN32:REMOTE-INPUT] Execution error:', err);
+    }
   });
 });
 

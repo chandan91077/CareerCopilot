@@ -121,10 +121,12 @@ function isHallucinationOrFiller(text: string): boolean {
 
 function isSubstantiveQuestion(text: string): boolean {
   if (isHallucinationOrFiller(text)) return false;
+
   const clean = text.trim();
+  if (!clean) return false;
+
   const lower = clean.toLowerCase();
 
-  // Explicitly reject greetings, pleasantries, and non-questions
   const GREETINGS = [
     /hello/i, /hi\b/i, /hey/i, /good\s+(morning|afternoon|evening)/i,
     /everyone/i, /thank/i, /welcome/i, /nice\s+to\s+meet/i, /how\s+are\s+you/i
@@ -137,7 +139,9 @@ function isSubstantiveQuestion(text: string): boolean {
     'code', 'design', 'architecture', 'system', 'database', 'sql',
     'java', 'python', 'react', 'node', 'api', 'bug', 'algorithm',
     'complexity', 'difference', 'compare', 'advantage', 'disadvantage',
-    'git', 'repo', 'push', 'commit', 'branch', 'merge', 'rebase'
+    'git', 'repo', 'push', 'commit', 'branch', 'merge', 'rebase',
+    'explain', 'walk me through', 'tell me about', 'give me an example',
+    'what is', 'what are', 'how do', 'how would', 'why do', 'when do'
   ];
 
   const hasQuestionKeyword = keywords.some(k => lower.includes(k));
@@ -147,7 +151,11 @@ function isSubstantiveQuestion(text: string): boolean {
   }
 
   if (clean.endsWith('?')) return true;
-  return hasQuestionKeyword;
+  if (hasQuestionKeyword && clean.split(/\s+/).length >= 4) return true;
+
+  // Accept direct spoken prompts even when punctuation is missing, as long as they look like a real question.
+  const wordCount = clean.split(/\s+/).length;
+  return wordCount >= 6 && !/^(yes|no|ok|sure|alright|understood)\b/i.test(lower);
 }
 
 function getTodayDateKey(): string {

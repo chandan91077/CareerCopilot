@@ -81,6 +81,14 @@ export function setupScreenShareSocket(io: SocketServer) {
       }
     });
 
+    // Remote mouse & keyboard control relay from viewer to host
+    socket.on('screen-share:remote-input', (data: { sessionId: string; input: any }) => {
+      const { sessionId, input } = data;
+      if (!sessionId) return;
+      const room = `screen-share:${sessionId.toUpperCase()}`;
+      socket.to(room).emit('screen-share:remote-input', { input });
+    });
+
     // Candidate explicitly stops screen sharing
     socket.on('screen-share:stop', (data: { sessionId: string }) => {
       const { sessionId } = data;

@@ -21,13 +21,42 @@ const getOpenAIClient = (): AIClientConfig | null => {
   if (groqKey && groqKey.trim().length > 0) {
     return {
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-70b-versatile',
       visionModel: 'llama-3.2-11b-vision-preview'
     };
   }
 
   return null;
 };
+
+async function createChatCompletionWithFallback(
+  ai: AIClientConfig,
+  payload: any,
+  fallbackModels: string[] = ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant']
+) {
+  const modelsToTry = [ai.model, ...fallbackModels.filter((m) => m !== ai.model)];
+
+  let lastError: any;
+  for (const modelName of modelsToTry) {
+    try {
+      return await ai.client.chat.completions.create({ ...payload, model: modelName });
+    } catch (err: any) {
+      lastError = err;
+      const message = String(err?.message || '');
+      const isModelMissing =
+        err?.status === 404 ||
+        message.toLowerCase().includes('does not exist') ||
+        message.toLowerCase().includes('you do not have access') ||
+        message.toLowerCase().includes('model not found');
+
+      if (!isModelMissing) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 // Fallback Mock Responses for development if API key is not present
 const mocks = {
@@ -264,8 +293,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
       };
     }
 
-    const response = await ai.client.chat.completions.create({
-      model: ai.visionModel,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         {
           role: 'system',
@@ -297,7 +325,7 @@ Output strictly as JSON in the following format:
         }
       ],
       response_format: { type: 'json_object' }
-    });
+    }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']);
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
@@ -310,8 +338,7 @@ Output strictly as JSON in the following format:
       };
     }
 
-    const response = await ai.client.chat.completions.create({
-      model: ai.model,
+    const response = await createChatCompletionWithFallback(ai, {
       messages: [
         {
           role: 'system',

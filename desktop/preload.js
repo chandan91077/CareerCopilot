@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Diagnostics: check if Electron granted media permissions ─────
   checkMediaPermissions: () => ipcRenderer.invoke('check-media-permissions'),
 
+  // ── Remote mouse/keyboard execution ──────────────────────────────
+  executeRemoteInput: (input) => ipcRenderer.invoke('execute-remote-input', input),
+
   // ── Utility: remove a specific IPC listener ─────────────────────
   removeListener: (channel) => ipcRenderer.removeAllListeners(channel),
 });
