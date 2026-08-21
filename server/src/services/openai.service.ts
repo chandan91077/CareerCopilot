@@ -449,6 +449,9 @@ Output strictly as JSON in the following format:
         const response = await groq.audio.transcriptions.create({
           file: file,
           model: 'whisper-large-v3',
+          language: 'en',
+          temperature: 0.0,
+          prompt: 'Technical software engineering interview speech in English.',
         });
         if (response.text) return response.text;
       } catch (groqErr: any) {
@@ -465,6 +468,9 @@ Output strictly as JSON in the following format:
         const response = await openai.audio.transcriptions.create({
           file: file,
           model: 'whisper-1',
+          language: 'en',
+          temperature: 0.0,
+          prompt: 'Technical software engineering interview speech in English.',
         });
         return response.text;
       } catch (err: any) {

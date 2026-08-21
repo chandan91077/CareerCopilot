@@ -95,6 +95,34 @@ function nowTimestamp(): string {
   return new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
+async function checkAudioChunkVolume(blob: Blob): Promise<number> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const buffer = reader.result as ArrayBuffer;
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) { resolve(1.0); return; }
+        const audioCtx = new AudioCtx();
+        const audioBuffer = await audioCtx.decodeAudioData(buffer);
+        const channelData = audioBuffer.getChannelData(0);
+        
+        let sum = 0;
+        for (let i = 0; i < channelData.length; i++) {
+          sum += channelData[i] * channelData[i];
+        }
+        const rms = Math.sqrt(sum / channelData.length);
+        audioCtx.close().catch(() => {});
+        resolve(rms);
+      } catch (e) {
+        resolve(1.0);
+      }
+    };
+    reader.onerror = () => resolve(1.0);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 const HALLUCINATING_PATTERNS = [
   /thank(s|\s+you)?(\s+for\s+\w+)?/i,
   /subtitles?\s+by/i,
@@ -111,11 +139,22 @@ const HALLUCINATING_PATTERNS = [
   /thanks?\s+for\s+watching/i,
   /hello\s+everyone/i,
   /hello\s+there/i,
+  /kansai\s+international\s+airport/i,
+  /kärleksfond|karleksfond/i,
+  /hubsan/i,
+  /chicken\s+breast/i,
+  /i'm\s+going\s+to\s+make/i,
+  /you/i,
+  /the/i,
+  /so/i,
+  /well/i,
 ];
 
 function isHallucinationOrFiller(text: string): boolean {
   const clean = text.trim();
-  if (!clean || clean.length < 2) return true;
+  if (!clean || clean.length < 3) return true;
+  if (/^[^\w]+$/.test(clean)) return true;
+  if (/^(you|the|a|an|it|is|so|oh|ah|um|uh|ok|yeah)$/i.test(clean)) return true;
   return HALLUCINATING_PATTERNS.some(r => r.test(clean));
 }
 
@@ -392,7 +431,14 @@ export default function AssistantOverlay() {
       return;
     }
 
-    console.log(`[AUDIO] Sending chunk: ${audioBlob.size} bytes, mime: ${mimeType}, speaker: ${speaker}`);
+    const volumeRms = await checkAudioChunkVolume(audioBlob);
+    if (volumeRms < 0.005) {
+      console.log(`[AUDIO] Skipping silent audio chunk (volume RMS: ${volumeRms.toFixed(5)})`);
+      setStage('Capture', 'idle', 'Silence detected (skipped)');
+      return;
+    }
+
+    console.log(`[AUDIO] Sending chunk: ${audioBlob.size} bytes, volume RMS: ${volumeRms.toFixed(4)}, speaker: ${speaker}`);
     setStage('Send to server', 'pending', `${audioBlob.size} bytes`);
     setStage('Transcription', 'pending');
 
