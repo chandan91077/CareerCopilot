@@ -78,9 +78,10 @@ router.get('/latest', optionalAuthMiddleware, async (req: AuthRequest, res: Resp
   try {
     let resume = null;
     if (req.user?.id) {
-      resume = await Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
-    }
-    if (!resume) {
+      // Logged in user: strictly find their own resume
+      resume = await Resume.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+    } else {
+      // Unauthenticated desktop standalone overlay fallback
       resume = await Resume.findOne().sort({ createdAt: -1 });
     }
     if (!resume) {

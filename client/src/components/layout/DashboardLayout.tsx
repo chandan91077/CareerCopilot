@@ -87,7 +87,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             if (item.path === '/admin') {
               const token = localStorage.getItem('token');
               const userStr = localStorage.getItem('user');
-              const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || '/admin';
+              const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+              const defaultAdminUrl = isLocal ? 'http://localhost:5174' : 'https://career-copilot-admin.vercel.app';
+              const adminUrl = import.meta.env.VITE_ADMIN_APP_URL || defaultAdminUrl;
               const href = token && userStr 
                 ? `${adminUrl}?token=${token}&user=${encodeURIComponent(userStr)}` 
                 : adminUrl;
@@ -96,6 +98,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <a
                   key={item.name}
                   href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className={`flex items-center px-4 py-3 rounded-xl transition-all duration-150 group font-medium text-sm ${
                     isActive
                       ? 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-600 dark:text-indigo-400 border-l-4 border-indigo-500'
