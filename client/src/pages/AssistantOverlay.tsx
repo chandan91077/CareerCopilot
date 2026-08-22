@@ -127,34 +127,20 @@ const HALLUCINATING_PATTERNS = [
   /thank(s|\s+you)?(\s+for\s+\w+)?/i,
   /subtitles?\s+by/i,
   /amara\.org/i,
-  /good\s+(morning|afternoon|evening|night)/i,
   /subscribe/i,
   /like\s+and\s+subscribe/i,
-  /kampen/i,
-  /uh-?huh/i,
-  /bye/i,
-  /see\s+you/i,
-  /welcome\s+back/i,
-  /good morning,?\s*girl/i,
   /thanks?\s+for\s+watching/i,
-  /hello\s+everyone/i,
-  /hello\s+there/i,
   /kansai\s+international\s+airport/i,
   /kärleksfond|karleksfond/i,
   /hubsan/i,
-  /chicken\s+breast/i,
-  /i'm\s+going\s+to\s+make/i,
-  /you/i,
-  /the/i,
-  /so/i,
-  /well/i,
 ];
 
 function isHallucinationOrFiller(text: string): boolean {
   const clean = text.trim();
-  if (!clean || clean.length < 3) return true;
+  if (!clean || clean.length < 2) return true;
   if (/^[^\w]+$/.test(clean)) return true;
-  if (/^(you|the|a|an|it|is|so|oh|ah|um|uh|ok|yeah)$/i.test(clean)) return true;
+  // Filter out standalone single filler words
+  if (/^(you|the|a|an|it|is|so|oh|ah|um|uh|ok|yeah|well|bye|hi|hey)$/i.test(clean)) return true;
   return HALLUCINATING_PATTERNS.some(r => r.test(clean));
 }
 
@@ -1032,13 +1018,15 @@ export default function AssistantOverlay() {
           {/* CV status pill */}
           <span style={{
             display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px',
-            borderRadius: 999, fontSize: 9, fontWeight: 700,
+            borderRadius: 999, fontSize: 9, fontWeight: 700, maxWidth: 110, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
             background: resumeStatus === 'loaded' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)',
             color: resumeStatus === 'loaded' ? '#6ee7b7' : '#fbbf24',
             border: `1px solid ${resumeStatus === 'loaded' ? 'rgba(52,211,153,.25)' : 'rgba(251,191,36,.2)'}`,
-          }}>
-            <User size={8} />
-            {resumeStatus === 'loading' ? 'CV...' : resumeStatus === 'loaded' ? `CV: ${extractName(resume?.parsedText || '')}` : 'No CV'}
+          }} title={resume ? extractName(resume.parsedText || '') : ''}>
+            <User size={8} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {resumeStatus === 'loading' ? 'CV...' : resumeStatus === 'loaded' ? `CV: ${extractName(resume?.parsedText || '')}` : 'No CV'}
+            </span>
           </span>
 
           {/* Capture button */}
@@ -1048,7 +1036,7 @@ export default function AssistantOverlay() {
               if (eAPI?.triggerScreenCapture) eAPI.triggerScreenCapture();
               else handleCapture('');
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 999, background: 'rgba(99,102,241,.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)', fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 999, background: 'rgba(99,102,241,.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)', fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none', flexShrink: 0 }}
           >
             <Camera size={11} /> Capture
           </button>
@@ -1056,15 +1044,16 @@ export default function AssistantOverlay() {
           {/* Real-time Screen Share toggle button */}
           <button
             onClick={() => setShowScreenPanel(!showScreenPanel)}
+            title="Broadcast your screen in real time"
             style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 999,
-              background: screenStatus === 'sharing' ? 'rgba(34,197,94,.25)' : 'rgba(34,197,94,.18)',
+              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 999,
+              background: screenStatus === 'sharing' ? 'rgba(34,197,94,.25)' : 'rgba(34,197,94,.22)',
               color: screenStatus === 'sharing' ? '#4ade80' : '#86efac',
-              border: `1px solid ${screenStatus === 'sharing' ? 'rgba(34,197,94,.5)' : 'rgba(34,197,94,.3)'}`,
-              fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none', WebkitAppRegion: 'no-drag'
+              border: `1px solid ${screenStatus === 'sharing' ? 'rgba(34,197,94,.6)' : 'rgba(34,197,94,.4)'}`,
+              fontSize: 9, fontWeight: 800, cursor: 'pointer', outline: 'none', WebkitAppRegion: 'no-drag', flexShrink: 0
             } as any}
           >
-            <Monitor size={11} /> {screenStatus === 'sharing' ? 'Sharing...' : 'Screen Share'}
+            <Monitor size={11} /> {screenStatus === 'sharing' ? '● Sharing' : 'Screen Share'}
           </button>
         </div>
 

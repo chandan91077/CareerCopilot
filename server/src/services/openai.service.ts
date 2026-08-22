@@ -372,49 +372,67 @@ Output strictly as JSON in the following format:
     const ai = getOpenAIClient();
     const fallbackAnswer = () => {
       const qLower = question.toLowerCase();
-      let text = `Technical Answer for: "${question}"\n\n`;
+      let text = `### Technical Solution: "${question}"\n\n`;
       let code = "";
 
       const isPython = qLower.includes('python') || qLower.includes('py');
       const isJava = qLower.includes('java') && !qLower.includes('script');
       const isCpp = qLower.includes('c++') || qLower.includes('cpp');
-      const isSql = qLower.includes('sql') || qLower.includes('join') || qLower.includes('query');
+      const isJsTs = qLower.includes('javascript') || qLower.includes('typescript') || qLower.includes('react') || qLower.includes('node');
+      const isSql = qLower.includes('sql') || qLower.includes('join') || qLower.includes('query') || qLower.includes('database');
 
       if (qLower.includes('second largest') || (qLower.includes('largest') && qLower.includes('second'))) {
         text += `• **Optimal Single-Pass Approach**: Maintain two variables (\`largest\` and \`secondLargest\`) in a single pass.\n• **Time Complexity**: O(N) single pass.\n• **Space Complexity**: O(1) auxiliary space.`;
         if (isPython) {
-          code = `def find_second_largest(arr):\n    if not arr or len(arr) < 2:\n        return -1\n    largest = second = float('-inf')\n    for num in arr:\n        if num > largest:\n            second = largest\n            largest = num\n        elif num > second and num != largest:\n            second = num\n    return second if second != float('-inf') else -1\n\n# Example usage:\nprint(find_second_largest([12, 35, 1, 10, 34, 1]))  # Output: 34`;
+          code = `def find_second_largest(arr):\n    if not arr or len(arr) < 2:\n        return -1\n    largest = second = float('-inf')\n    for num in arr:\n        if num > largest:\n            second = largest\n            largest = num\n        elif num > second and num != largest:\n            second = num\n    return second if second != float('-inf') else -1\n\n# Test:\nprint(find_second_largest([12, 35, 1, 10, 34, 1]))  # Output: 34`;
         } else {
           code = `public class Solution {\n    public static int findSecondLargest(int[] arr) {\n        if (arr == null || arr.length < 2) return -1;\n        int largest = Integer.MIN_VALUE, second = Integer.MIN_VALUE;\n        for (int num : arr) {\n            if (num > largest) {\n                second = largest;\n                largest = num;\n            } else if (num > second && num != largest) {\n                second = num;\n            }\n        }\n        return (second == Integer.MIN_VALUE) ? -1 : second;\n    }\n}`;
         }
+      } else if (qLower.includes('two sum') || qLower.includes('2 sum')) {
+        text += `• **Hash Map Approach**: Store complement (\`target - num\`) in a hash map as you iterate.\n• **Time Complexity**: O(N)\n• **Space Complexity**: O(N)`;
+        if (isPython) {
+          code = `def twoSum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []`;
+        } else {
+          code = `import java.util.*;\n\nclass Solution {\n    public int[] twoSum(int[] nums, int target) {\n        Map<Integer, Integer> map = new HashMap<>();\n        for (int i = 0; i < nums.length; i++) {\n            int diff = target - nums[i];\n            if (map.containsKey(diff)) {\n                return new int[]{map.get(diff), i};\n            }\n            map.put(nums[i], i);\n        }\n        return new int[0];\n    }\n}`;
+        }
       } else if (qLower.includes('missing number') || qLower.includes('268')) {
-        text += `• **Mathematical Sum Formula Approach**: The sum of numbers from 0 to N is N*(N+1)/2. The missing number is expectedSum - actualSum.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1).`;
+        text += `• **Mathematical Sum Formula Approach**: The sum of 0..N is N*(N+1)/2. Missing number = expectedSum - actualSum.\n• **Time Complexity**: O(N)\n• **Space Complexity**: O(1)`;
         if (isPython) {
-          code = `def missingNumber(nums: list[int]) -> int:\n    n = len(nums)\n    return n * (n + 1) // 2 - sum(nums)\n\n# Example test:\nprint(missingNumber([3, 0, 1]))  # Output: 2`;
+          code = `def missingNumber(nums: list[int]) -> int:\n    n = len(nums)\n    return n * (n + 1) // 2 - sum(nums)`;
         } else {
-          code = `class Solution {\n    public int missingNumber(int[] nums) {\n        int n = nums.length;\n        int expectedSum = n * (n + 1) / 2;\n        int actualSum = 0;\n        for (int num : nums) {\n            actualSum += num;\n        }\n        return expectedSum - actualSum;\n    }\n}`;
+          code = `class Solution {\n    public int missingNumber(int[] nums) {\n        int n = nums.length;\n        int expectedSum = n * (n + 1) / 2;\n        int actualSum = 0;\n        for (int num : nums) actualSum += num;\n        return expectedSum - actualSum;\n    }\n}`;
         }
-      } else if (qLower.includes('3sum') || qLower.includes('3 some') || qLower.includes('three sum')) {
-        text += `• **Two-Pointer Approach**: Sort the array, then iterate each element \`i\` and use two pointers (\`left\`, \`right\`) to find pairs adding to \`-nums[i]\` while skipping duplicates.\n• **Time Complexity**: O(N^2).\n• **Space Complexity**: O(1) auxiliary space.`;
+      } else if (qLower.includes('reverse') && (qLower.includes('linked list') || qLower.includes('list'))) {
+        text += `• **Iterative Three-Pointer Approach**: Use \`prev\`, \`curr\`, and \`nextTemp\` to reverse pointers in-place.\n• **Time Complexity**: O(N)\n• **Space Complexity**: O(1)`;
         if (isPython) {
-          code = `def threeSum(nums: list[int]) -> list[list[int]]:\n    nums.sort()\n    res = []\n    for i in range(len(nums) - 2):\n        if i > 0 and nums[i] == nums[i-1]: continue\n        l, r = i + 1, len(nums) - 1\n        while l < r:\n            s = nums[i] + nums[l] + nums[r]\n            if s == 0:\n                res.append([nums[i], nums[l], nums[r]])\n                while l < r and nums[l] == nums[l+1]: l += 1\n                while l < r and nums[r] == nums[r-1]: r -= 1\n                l += 1; r -= 1\n            elif s < 0: l += 1\n            else: r -= 1\n    return res`;
+          code = `def reverseList(head):\n    prev = None\n    curr = head\n    while curr:\n        next_temp = curr.next\n        curr.next = prev\n        prev = curr\n        curr = next_temp\n    return prev`;
         } else {
-          code = `import java.util.*;\n\nclass Solution {\n    public List<List<Integer>> threeSum(int[] nums) {\n        Arrays.sort(nums);\n        List<List<Integer>> res = new ArrayList<>();\n        for (int i = 0; i < nums.length - 2; i++) {\n            if (i > 0 && nums[i] == nums[i-1]) continue;\n            int left = i + 1, right = nums.length - 1;\n            while (left < right) {\n                int sum = nums[i] + nums[left] + nums[right];\n                if (sum == 0) {\n                    res.add(Arrays.asList(nums[i], nums[left], nums[right]));\n                    while (left < right && nums[left] == nums[left+1]) left++;\n                    while (left < right && nums[right] == nums[right-1]) right--;\n                    left++; right--;\n                } else if (sum < 0) left++;\n                else right--;\n            }\n        }\n        return res;\n    }\n}`;
+          code = `class Solution {\n    public ListNode reverseList(ListNode head) {\n        ListNode prev = null;\n        ListNode curr = head;\n        while (curr != null) {\n            ListNode nextTemp = curr.next;\n            curr.next = prev;\n            prev = curr;\n            curr = nextTemp;\n        }\n        return prev;\n    }\n}`;
         }
+      } else if (qLower.includes('react') || qLower.includes('hook') || qLower.includes('useeffect') || qLower.includes('usestate')) {
+        text += `• **React Hooks Core Principles**:\n  1. **useState**: Manages local component state.\n  2. **useEffect**: Handles side effects (fetching data, subscriptions). Clean up return function prevents memory leaks.\n  3. **useMemo / useCallback**: Memoize calculated values and callbacks to optimize re-renders.`;
+        code = `import React, { useState, useEffect } from 'react';\n\nexport function UserProfile({ userId }) {\n  const [user, setUser] = useState(null);\n\n  useEffect(() => {\n    let isMounted = true;\n    fetch(\`/api/users/\${userId}\`)\n      .then(res => res.json())\n      .then(data => { if (isMounted) setUser(data); });\n    return () => { isMounted = false; };\n  }, [userId]);\n\n  if (!user) return <div>Loading...</div>;\n  return <div><h1>{user.name}</h1></div>;\n}`;
+      } else if (qLower.includes('node') || qLower.includes('event loop') || qLower.includes('express')) {
+        text += `• **Node.js Architecture & Event Loop**:\n  - **Single-threaded Event Loop**: Handles asynchronous non-blocking I/O using libuv thread pool.\n  - **Phases**: Timers (setTimeout) → Pending Callbacks → Poll (I/O) → Check (setImmediate) → Close Callbacks.\n  - **Best Practice**: Never block the main thread with CPU-intensive loops; offload heavy computations to Worker Threads.`;
+        code = `const express = require('express');\nconst app = express();\n\napp.get('/api/health', (req, res) => {\n  res.json({ status: 'ok', timestamp: new Date().toISOString() });\n});\n\napp.listen(5000, () => console.log('Server running on port 5000'));`;
       } else if (isSql) {
-        text += `• **SQL Joins & Aggregation**:\n  - **INNER JOIN**: Returns rows matching keys in both tables.\n  - **LEFT JOIN**: Returns all rows from left table plus matching right rows.`;
-        code = `SELECT e.id, e.name, d.department_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.id;`;
-      } else if (qLower.includes('oops') || qLower.includes('object oriented')) {
-        text += `• **OOP Core Pillars**: Encapsulation, Inheritance, Polymorphism, Abstraction.`;
-        code = `class Developer:\n    def __init__(self, name, role):\n        self._name = name\n        self._role = role\n\n    def get_info(self):\n        return f"{self._name} ({self._role})"\n\ndev = Developer("Candidate", "Software Engineer")\nprint(dev.get_info())`;
+        text += `• **SQL Joins & Performance Optimization**:\n  - **INNER JOIN**: Matches records present in both tables.\n  - **LEFT JOIN**: Preserves all rows from the left table.\n  - **Optimization**: Ensure indexes exist on Foreign Keys & WHERE clause columns.`;
+        code = `SELECT e.id, e.name, d.department_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.id\nWHERE e.status = 'ACTIVE'\nORDER BY e.created_at DESC;`;
+      } else if (qLower.includes('tell me about yourself') || qLower.includes('describe yourself') || qLower.includes('introduce')) {
+        text += `• **Recommended Pitch Structure (STAR & Elevator Pitch)**:\n  1. **Present**: "I'm a Full-Stack Engineer with experience building responsive web apps and scalable backends."\n  2. **Past**: "Previously, I led feature development using React, Node.js, and TypeScript, improving app performance by 30%."\n  3. **Future**: "I'm excited about this opportunity because your team works on cutting-edge distributed systems where I can deliver immediate value."`;
+        code = ""; // No code needed for HR / self introduction
       } else {
-        text += `• **Technical Solution Approach**:\n  - Analyze constraints, inputs, and edge cases.\n  - Implement single-pass or hash-based lookup for optimal runtime.\n• **Time Complexity**: O(N).\n• **Space Complexity**: O(1) or O(N).`;
+        text += `• **Technical Solution Overview**:\n  - Analyze boundary conditions, zero-element cases, and large input constraints.\n  - Utilize hashing or single-pass traversal for optimal O(N) runtime.`;
         if (isPython) {
-          code = `def solve(nums):\n    if not nums:\n        return None\n    return nums`;
+          code = `def solution(data):\n    if not data:\n        return None\n    # Process data optimally\n    return data`;
+        } else if (isJsTs) {
+          code = `export function solution(input) {\n  if (!input) return null;\n  return input;\n}`;
         } else {
-          code = `class Solution {\n    public static int solve(int[] nums) {\n        if (nums == null || nums.length == 0) return -1;\n        return nums[0];\n    }\n}`;
+          code = `public class Solution {\n    public static Object solve(Object input) {\n        if (input == null) return null;\n        return input;\n    }\n}`;
         }
       }
+
+      text += `\n\n💡 *Tip: For full live AI generation, set GROQ_API_KEY (free at console.groq.com) or OPENAI_API_KEY in server/.env.*`;
 
       return { text, code };
     };

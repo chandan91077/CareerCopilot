@@ -72,11 +72,19 @@ router.post('/upload', auth_middleware_1.authMiddleware, upload.single('resume')
     }
 });
 // GET /resume/latest
-router.get('/latest', auth_middleware_1.authMiddleware, async (req, res) => {
+router.get('/latest', auth_middleware_1.optionalAuthMiddleware, async (req, res) => {
     try {
-        const resume = await models_1.Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
+        let resume = null;
+        if (req.user?.id) {
+            // Logged in user: strictly find their own resume
+            resume = await models_1.Resume.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+        }
+        else {
+            // Unauthenticated desktop standalone overlay fallback
+            resume = await models_1.Resume.findOne().sort({ createdAt: -1 });
+        }
         if (!resume) {
-            return res.status(404).json({ message: 'No resume found for this user' });
+            return res.status(404).json({ message: 'No resume found' });
         }
         return res.json(resume);
     }

@@ -236,7 +236,7 @@ function createWindow() {
 
   mainWindow.loadURL(startUrl);
 
-  if (isDev) {
+  if (isDev && process.env.DEV_TOOLS === 'true') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -245,18 +245,34 @@ function createWindow() {
     mainWindow.show();
     mainWindow.setSkipTaskbar(true);
     applyWin32ContentProtection(mainWindow);
-    setTimeout(() => applyWin32ContentProtection(mainWindow), 500);
-    setTimeout(() => applyWin32ContentProtection(mainWindow), 1500);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setSkipTaskbar(true);
+        applyWin32ContentProtection(mainWindow);
+      }
+    }, 500);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setSkipTaskbar(true);
+        applyWin32ContentProtection(mainWindow);
+      }
+    }, 1500);
 
-    // Continuously re-enforce screen protection every 1 second
+    // Continuously re-enforce screen protection and skipTaskbar every 1 second
     setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setSkipTaskbar(true);
         applyWin32ContentProtection(mainWindow);
       }
     }, 1000);
   });
 
-  mainWindow.on('focus', () => applyWin32ContentProtection(mainWindow));
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setSkipTaskbar(true);
+      applyWin32ContentProtection(mainWindow);
+    }
+  });
   mainWindow.on('show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setSkipTaskbar(true);

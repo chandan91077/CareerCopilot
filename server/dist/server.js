@@ -11,6 +11,8 @@ const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const socket_io_1 = require("socket.io");
 const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 // Load environment variables
 dotenv_1.default.config();
 // Imports router modules
@@ -63,9 +65,30 @@ app.use('/api/coding', coding_routes_1.default);
 app.use('/api/payment', payment_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
 app.use('/api/screen-share', screenShare_routes_1.default);
+// Desktop EXE Installer Download Endpoint
+app.get('/api/download/desktop', (req, res) => {
+    const possiblePaths = [
+        path_1.default.join(__dirname, '../public/downloads/CareerCopilotSetup.exe'),
+        path_1.default.join(__dirname, '../../desktop/release/CareerCopilotSetup.exe'),
+        path_1.default.join(process.cwd(), 'public/downloads/CareerCopilotSetup.exe'),
+        path_1.default.join(process.cwd(), '../desktop/release/CareerCopilotSetup.exe'),
+        path_1.default.join(__dirname, '../public/downloads/InterviewAISetup.exe'),
+        path_1.default.join(__dirname, '../../desktop/release/InterviewAISetup.exe'),
+        path_1.default.join(process.cwd(), 'public/downloads/InterviewAISetup.exe'),
+        path_1.default.join(process.cwd(), '../desktop/release/InterviewAISetup.exe')
+    ];
+    for (const exePath of possiblePaths) {
+        if (fs_1.default.existsSync(exePath)) {
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', 'attachment; filename="CareerCopilotSetup.exe"');
+            return res.download(exePath, 'CareerCopilotSetup.exe');
+        }
+    }
+    return res.redirect('https://github.com/chandan91077/CareerCopilot/releases/latest');
+});
 // Root Endpoint
 app.get('/', (req, res) => {
-    res.json({ message: 'AI Interview Preparation Platform API - Running' });
+    res.json({ message: 'CareerCopilot API - Running' });
 });
 // Socket.IO event handler for interactive live interview practice
 io.on('connection', (socket) => {
