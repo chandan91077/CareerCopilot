@@ -209,6 +209,7 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
+    type: 'toolbar',
     title: "CareerCopilot Interview Assistant",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
