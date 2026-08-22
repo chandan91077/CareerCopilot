@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowRight, ShieldCheck, Sparkles, Terminal, FileText, 
@@ -8,6 +8,16 @@ import {
 import { getApiUrl } from '../services/api';
 
 export default function Landing() {
+  const [desktopMeta, setDesktopMeta] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(getApiUrl('/api/download/desktop/meta'))
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.sizeMB) setDesktopMeta(data);
+      })
+      .catch(() => {});
+  }, []);
   const steps = [
     {
       num: '1',
@@ -299,9 +309,11 @@ export default function Landing() {
               download="CareerCopilotSetup.exe"
               className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
             >
-              <Download className="w-4 h-4" /> Download Windows App (.exe)
+              <Download className="w-4 h-4" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : ''}
             </a>
-            <span className="text-[10px] text-zinc-500 font-mono">Compatible with Windows 10/11 x64</span>
+            <span className="text-[10px] text-zinc-500 font-mono">
+              Windows 10/11 x64 {desktopMeta?.version ? `• v${desktopMeta.version}` : ''}
+            </span>
           </div>
         </div>
       </section>

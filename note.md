@@ -104,7 +104,121 @@ To prevent generating incomplete AI answers every 4 seconds mid-sentence:
 
 ---
 
-## 💡 5. Answers to The 5 Hackathon Questions
+## 🖥️ 5. How Real-Time Screen Sharing Works (WebRTC + Socket.IO)
+
+### Overview
+The Screen Sharing feature allows a candidate using the Desktop Overlay to **broadcast their screen live** to an evaluator (interviewer/recruiter/coach) watching via the Web App — with **encrypted peer-to-peer video streaming** and **real-time remote mouse & keyboard control**.
+
+---
+
+### Full Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                CANDIDATE (Electron Desktop Overlay)                   │
+│                                                                       │
+│  [Screen Share] button clicked                                        │
+│          │                                                            │
+│          ▼                                                            │
+│  desktopCapturer.getSources() ──► getUserMedia(chromeMediaSource)    │
+│  (captures full desktop video stream)                                 │
+│          │                                                            │
+│          ▼                                                            │
+│  POST /api/screen-share/create                                        │
+│  └── Server creates session: { sessionId, password, expiresAt }      │
+│          │                                                            │
+│          ▼                                                            │
+│  Socket.IO: emit("screen-share:host-register", { sessionId })        │
+│  RTCPeerConnection created, video track added                         │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │   Socket.IO Signaling (WebSocket)
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    BACKEND SERVER (Express + Socket.IO)               │
+│                                                                       │
+│  REST API Endpoints:                                                  │
+│  ├── POST /api/screen-share/create  → Generate sessionId + password  │
+│  ├── POST /api/screen-share/join    → Validate credentials           │
+│  └── POST /api/screen-share/stop   → Invalidate session              │
+│                                                                       │
+│  Socket.IO Event Relay (No media passes through server):             │
+│  ├── "screen-share:host-register"  → Register candidate host room    │
+│  ├── "screen-share:viewer-joined"  → Notify host that viewer joined  │
+│  ├── "screen-share:offer"         → Relay SDP offer host → viewer   │
+│  ├── "screen-share:answer"        → Relay SDP answer viewer → host  │
+│  ├── "screen-share:ice-candidate" → Relay ICE candidates both ways  │
+│  ├── "screen-share:remote-input"  → Forward mouse/keyboard events   │
+│  └── "screen-share:stop"          → Broadcast session ended         │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │   WebRTC (Peer-to-Peer, direct)
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                VIEWER (Browser Web App /screen-share/view)            │
+│                                                                       │
+│  Enter Session ID + Password  ──► POST /api/screen-share/join       │
+│          │                                                            │
+│          ▼                                                            │
+│  Socket.IO: emit("screen-share:join-room", { sessionId })            │
+│  RTCPeerConnection: Receives SDP offer → sends answer                │
+│          │                                                            │
+│          ▼                                                            │
+│  pc.ontrack ──► MediaStream ──► <video autoplay> rendered            │
+│          │                                                            │
+│          ▼                                                            │
+│  Remote Control: Mouse move / click / scroll / keydown               │
+│  └── Viewer mouse events ──► socket "screen-share:remote-input"      │
+│      Host receives ──► electronAPI.executeRemoteInput()              │
+│      ──► Win32 SetCursorPos() + mouse_event() via Koffi FFI          │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Step-by-Step: How a Session Works
+
+#### 🟢 Candidate Side (Desktop Overlay)
+1. Candidate clicks **"Screen Share"** button in the overlay top bar.
+2. Electron calls `desktopCapturer.getSources()` to get available screen sources.
+3. `getUserMedia({ chromeMediaSource: 'desktop', chromeMediaSourceId })` captures the full-resolution desktop video stream (1280–1920 × 720–1080).
+4. A `POST /api/screen-share/create` request generates a unique **6-char Session ID** (e.g., `PREP-8F42K9`) and a **6-char temporary Password** (e.g., `7X9P2Q`), stored in MongoDB with a 60-minute expiry.
+5. Candidate shares the **Session ID** and **Password** verbally or via chat to the viewer.
+6. The desktop overlay displays the credentials with **one-click copy** buttons.
+
+#### 🔵 Viewer Side (Browser / Web App)
+1. Viewer opens the Dashboard → **"Watch Stream"** sidebar link → `/screen-share/view`.
+2. Viewer enters the **Session ID** and **Password** → clicks **"Connect to Stream"**.
+3. The browser calls `POST /api/screen-share/join` to validate credentials against the stored MongoDB session.
+4. A **WebRTC `RTCPeerConnection`** is established peer-to-peer using **Google STUN servers** for NAT traversal:
+   - Host candidate sends **SDP Offer** via Socket.IO relay.
+   - Viewer sends back **SDP Answer**.
+   - Both exchange **ICE candidates** for network path negotiation.
+5. Once connected, the candidate's screen streams **directly** into the viewer's `<video>` element — the media **never passes through the server** (pure WebRTC P2P).
+
+---
+
+### Remote Mouse & Keyboard Control
+When the viewer has **"Remote Control: ON"** enabled:
+| Viewer Action | How It Works |
+|---|---|
+| Move mouse | `mousemove` event → socket `screen-share:remote-input` → `electronAPI.executeRemoteInput()` → Win32 `SetCursorPos(x, y)` |
+| Click | `mousedown/mouseup` → socket relay → `mouse_event(MOUSEEVENTF_LEFTDOWN)` via **Koffi FFI** |
+| Right-click | `contextmenu` → `mouse_event(MOUSEEVENTF_RIGHTDOWN + RIGHTUP)` |
+| Scroll | `wheel.deltaY` → `mouse_event(MOUSEEVENTF_WHEEL, delta)` |
+| Keypress | `keydown/keyup` → `keybd_event(virtualKeyCode)` via Win32 API |
+
+Mouse coordinates are normalized as `(xRatio, yRatio)` ratios of the video element size and then scaled to the actual screen resolution using `GetSystemMetrics(0/1)`.
+
+---
+
+### Security Model
+- **Session IDs are single-use per 60 minutes** — stored in MongoDB with `expiresAt` timestamp.
+- **Passwords are randomly generated** at session creation — not stored in plain text (hashed server-side).
+- **Content Protection**: The overlay window itself is **excluded from screen capture** via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` — meaning the AI overlay is invisible in the broadcast to the viewer.
+- **No media relay**: The video stream is **pure WebRTC peer-to-peer** — the server only relays tiny SDP/ICE signaling messages, never video frames.
+
+---
+
+
 
 ### Q1: What problem, and who exactly has it?
 **Target Audience**: Software engineering job candidates and computer science students taking live technical interviews, system design rounds, and online coding assessments.
@@ -134,7 +248,7 @@ If you remove the AI:
 
 ---
 
-## 📊 6. Rubric Alignment & Failure Log
+## 📊 7. Rubric Alignment
 
 ### Hackathon Constraints Satisfied
 1. **Two models / modalities**: Speech (Whisper audio) + Vision (Screen capture analysis) + Text (Llama-3.3-70B).
@@ -149,7 +263,7 @@ If you remove the AI:
 
 ---
 
-## 📦 7. How to Run & Download the App
+## 📦 8. How to Run & Download the App
 
 1. **Web Dashboard**: Run `npm run dev` in `client/` and `server/`.
 2. **Direct Windows (.exe) Download**: Click **Download Windows App (.exe)** on the Dashboard or visit `/api/download/desktop`.

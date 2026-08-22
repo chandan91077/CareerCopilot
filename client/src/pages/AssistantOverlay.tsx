@@ -373,6 +373,8 @@ export default function AssistantOverlay() {
   const resumeRef = useRef<ResumeData | null>(null);
   resumeRef.current = resume;
 
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
   const questionBufferRef = useRef<string[]>([]);
   const pauseTimerRef = useRef<any>(null);
 
@@ -397,6 +399,11 @@ export default function AssistantOverlay() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.answer) {
+          if (data.answer.isMock || data.isMock) {
+            setIsDemoMode(true);
+          } else {
+            setIsDemoMode(false);
+          }
           pushQA({ question, text: data.answer.text, code: data.answer.code });
           return;
         }
@@ -996,32 +1003,33 @@ export default function AssistantOverlay() {
     } as any}>
 
       {/* ══ TOP BAR ═══════════════════════════════════════════════ */}
-      <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', WebkitAppRegion: 'drag' } as any}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, WebkitAppRegion: 'no-drag' } as any}>
-          <div style={{ width: 20, height: 20, borderRadius: 6, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900, color: '#fff' }}>C</div>
-          <span style={{ fontWeight: 800, fontSize: 12, color: '#f4f4f5', letterSpacing: '-0.3px' }}>CareerCopilot</span>
+      <div style={{ ...G, borderRadius: 9999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 12px', gap: 6, WebkitAppRegion: 'drag' } as any}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexShrink: 1, overflow: 'hidden', WebkitAppRegion: 'no-drag' } as any}>
+          <div style={{ width: 18, height: 18, borderRadius: 5, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8.5, fontWeight: 900, color: '#fff', flexShrink: 0 }}>C</div>
+          <span style={{ fontWeight: 800, fontSize: 11, color: '#f4f4f5', letterSpacing: '-0.3px', flexShrink: 0 }}>CareerCopilot</span>
 
           {/* Live status pill */}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 999,
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 999,
             background: audioMode === 'off' ? 'rgba(239,68,68,.12)' : audioMode === 'mic' ? 'rgba(99,102,241,.15)' : 'rgba(34,197,94,.12)',
             color: audioMode === 'off' ? '#fca5a5' : audioMode === 'mic' ? '#a5b4fc' : '#86efac',
             border: `1px solid ${audioMode === 'off' ? 'rgba(239,68,68,.25)' : audioMode === 'mic' ? 'rgba(99,102,241,.3)' : 'rgba(34,197,94,.25)'}`,
-            fontSize: 9, fontWeight: 700 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%',
+            fontSize: 8.5, fontWeight: 700, flexShrink: 0 }}>
+            <span style={{ width: 4, height: 4, borderRadius: '50%',
               background: audioMode === 'off' ? '#52525b' : audioMode === 'mic' ? '#6366f1' : '#22c55e',
               transition: 'background .3s',
               boxShadow: audioMode !== 'off' ? '0 0 6px currentColor' : 'none'
             }} />
-            {audioMode === 'off' ? 'OFF' : audioMode === 'mic' ? 'MIC ON' : 'COMBINED ON'}
+            {audioMode === 'off' ? 'OFF' : audioMode === 'mic' ? 'MIC' : 'COMBINED'}
           </span>
 
           {/* CV status pill */}
           <span style={{
-            display: 'flex', alignItems: 'center', gap: 4, padding: '1px 8px',
-            borderRadius: 999, fontSize: 9, fontWeight: 700, maxWidth: 110, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+            display: 'flex', alignItems: 'center', gap: 3, padding: '1px 6px',
+            borderRadius: 999, fontSize: 8.5, fontWeight: 700, maxWidth: 85, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
             background: resumeStatus === 'loaded' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)',
             color: resumeStatus === 'loaded' ? '#6ee7b7' : '#fbbf24',
             border: `1px solid ${resumeStatus === 'loaded' ? 'rgba(52,211,153,.25)' : 'rgba(251,191,36,.2)'}`,
+            flexShrink: 1
           }} title={resume ? extractName(resume.parsedText || '') : ''}>
             <User size={8} style={{ flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1036,9 +1044,9 @@ export default function AssistantOverlay() {
               if (eAPI?.triggerScreenCapture) eAPI.triggerScreenCapture();
               else handleCapture('');
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 999, background: 'rgba(99,102,241,.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)', fontSize: 9, fontWeight: 700, cursor: 'pointer', outline: 'none', flexShrink: 0 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 999, background: 'rgba(99,102,241,.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)', fontSize: 8.5, fontWeight: 700, cursor: 'pointer', outline: 'none', flexShrink: 0 }}
           >
-            <Camera size={11} /> Capture
+            <Camera size={10} /> Capture
           </button>
 
           {/* Real-time Screen Share toggle button */}
@@ -1046,15 +1054,25 @@ export default function AssistantOverlay() {
             onClick={() => setShowScreenPanel(!showScreenPanel)}
             title="Broadcast your screen in real time"
             style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 9px', borderRadius: 999,
+              display: 'flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 999,
               background: screenStatus === 'sharing' ? 'rgba(34,197,94,.25)' : 'rgba(34,197,94,.22)',
               color: screenStatus === 'sharing' ? '#4ade80' : '#86efac',
               border: `1px solid ${screenStatus === 'sharing' ? 'rgba(34,197,94,.6)' : 'rgba(34,197,94,.4)'}`,
-              fontSize: 9, fontWeight: 800, cursor: 'pointer', outline: 'none', WebkitAppRegion: 'no-drag', flexShrink: 0
+              fontSize: 8.5, fontWeight: 800, cursor: 'pointer', outline: 'none', WebkitAppRegion: 'no-drag', flexShrink: 0
             } as any}
           >
-            <Monitor size={11} /> {screenStatus === 'sharing' ? '● Sharing' : 'Screen Share'}
+            <Monitor size={10} /> {screenStatus === 'sharing' ? '● Sharing' : 'Screen Share'}
           </button>
+
+          {isDemoMode && (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 999,
+              background: 'rgba(245,158,11,.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,.4)',
+              fontSize: 8, fontWeight: 800, flexShrink: 0
+            }}>
+              ⚡ DEMO MODE
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' } as any}>

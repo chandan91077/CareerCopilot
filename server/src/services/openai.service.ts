@@ -19,6 +19,7 @@ const GROQ_TEXT_FALLBACKS = [
 const getOpenAIClient = (): AIClientConfig | null => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (openaiKey && openaiKey.trim().length > 0) {
+    console.log('[AI-KEY-CHECK] ✅ OPENAI_API_KEY detected');
     return {
       client: new OpenAI({ apiKey: openaiKey }),
       model: 'gpt-4o-mini',
@@ -28,6 +29,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
 
   const groqKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
   if (groqKey && groqKey.trim().length > 0) {
+    console.log('[AI-KEY-CHECK] ✅ GROQ_API_KEY detected');
     return {
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
       model: 'llama-3.3-70b-versatile',
@@ -35,6 +37,7 @@ const getOpenAIClient = (): AIClientConfig | null => {
     };
   }
 
+  console.warn('[AI-KEY-CHECK] ⚠️ No valid OPENAI_API_KEY or GROQ_API_KEY found in process.env — falling back to deterministic mock service');
   return null;
 };
 
@@ -48,13 +51,17 @@ async function createChatCompletionWithFallback(
   let lastError: any;
   for (const modelName of modelsToTry) {
     try {
-      return await ai.client.chat.completions.create({ ...payload, model: modelName });
+      console.log(`[AI-Fallback] Attempting model: ${modelName}`);
+      const res = await ai.client.chat.completions.create({ ...payload, model: modelName });
+      console.log(`[AI-Fallback] ✅ Success with model: ${modelName}`);
+      return res;
     } catch (err: any) {
       lastError = err;
-      console.warn(`[AI-Fallback] Model ${modelName} failed (${err?.status || err?.message}). Trying next fallback model...`);
+      console.warn(`[AI-Fallback] ❌ Model ${modelName} failed (${err?.status || err?.message || err}). Trying next fallback model...`);
     }
   }
 
+  console.error('[AI-Fallback] ❌ All model fallback attempts failed!');
   throw lastError;
 }
 
@@ -369,6 +376,7 @@ Output strictly as JSON in the following format:
   }
 
   static async answerAssistantQuery(question: string, resumeText: string) {
+    console.log(`[AI-ASK] Received question: "${question.slice(0, 100)}${question.length > 100 ? '...' : ''}"`);
     const ai = getOpenAIClient();
     const fallbackAnswer = () => {
       const qLower = question.toLowerCase();
@@ -434,7 +442,7 @@ Output strictly as JSON in the following format:
 
       text += `\n\n💡 *Tip: For full live AI generation, set GROQ_API_KEY (free at console.groq.com) or OPENAI_API_KEY in server/.env.*`;
 
-      return { text, code };
+      return { text, code, isMock: true };
     };
 
     if (!ai) {
@@ -475,7 +483,8 @@ Output strictly as JSON:
         response_format: { type: 'json_object' }
       }, GROQ_TEXT_FALLBACKS);
 
-      return JSON.parse(response.choices[0].message.content || '{}');
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      return { ...parsed, isMock: false };
     } catch (err: any) {
       console.warn('[OpenAIService.answerAssistantQuery] AI error, returning technical fallback answer:', err?.message || err);
       return fallbackAnswer();

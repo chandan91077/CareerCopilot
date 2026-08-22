@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentPlan, setCurrentPlan] = useState('free');
+  const [desktopMeta, setDesktopMeta] = useState<any>(null);
 
   const rawUser = localStorage.getItem('user');
   const user = rawUser ? JSON.parse(rawUser) : null;
@@ -24,12 +25,16 @@ export default function Dashboard() {
 
   const loadResumeAndStatus = async () => {
     try {
-      const [resumeRes, statusRes] = await Promise.all([
+      const [resumeRes, statusRes, metaRes] = await Promise.all([
         api.get('/resume/latest').catch(() => ({ data: null })),
-        api.get('/payment/status').catch(() => ({ data: { plan: 'free' } }))
+        api.get('/payment/status').catch(() => ({ data: { plan: 'free' } })),
+        api.get('/download/desktop/meta').catch(() => ({ data: null }))
       ]);
       setLatestResume(resumeRes.data);
       setCurrentPlan(statusRes.data.plan || 'free');
+      if (metaRes.data && metaRes.data.sizeMB) {
+        setDesktopMeta(metaRes.data);
+      }
     } catch (err) {
       console.log('Error loading initial data');
     }
@@ -129,10 +134,10 @@ export default function Dashboard() {
                 <span className="text-xs font-semibold text-indigo-100">Active Tier: <span className="uppercase text-white font-bold bg-white/20 px-2 py-0.5 rounded ml-1 border border-white/10">{currentPlan}</span></span>
                 <a 
                   href={getApiUrl('/api/download/desktop')}
-                  download="InterviewAISetup.exe"
+                  download="CareerCopilotSetup.exe"
                   className="w-fit px-4 py-2 mt-2 bg-white text-indigo-700 hover:bg-indigo-50 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer no-underline"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download Windows App (.exe)
+                  <Download className="w-3.5 h-3.5" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : ''}
                 </a>
               </div>
             </div>
