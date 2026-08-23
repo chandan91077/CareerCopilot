@@ -112,11 +112,19 @@ function startLocalServer(callback) {
 async function captureActiveScreenBase64() {
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: { width: 1280, height: 800 }
+    thumbnailSize: { width: 1920, height: 1080 }
   });
 
   if (sources.length > 0) {
-    return sources[0].thumbnail.toPNG().toString('base64');
+    const pngBuffer = sources[0].thumbnail.toPNG();
+    try {
+      const debugPath = path.join(app.getPath('temp'), 'last-capture-debug.png');
+      fs.writeFileSync(debugPath, pngBuffer);
+      console.log('[CAPTURE DEBUG] Saved fresh screen capture (' + pngBuffer.length + ' bytes) to:', debugPath);
+    } catch (e) {
+      console.warn('[CAPTURE DEBUG] Could not write debug image file:', e.message);
+    }
+    return pngBuffer.toString('base64');
   }
   throw new Error("No active screen captures found.");
 }

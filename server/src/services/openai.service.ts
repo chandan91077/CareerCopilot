@@ -369,34 +369,54 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
       };
     }
 
+    const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '').trim();
+    const imageByteLength = Math.round((cleanBase64.length * 3) / 4);
+    console.log(`[AI-Vision] Analyzing screen capture: ${cleanBase64.length} base64 chars (~${imageByteLength} bytes). Instruction: "${userInstruction || 'none'}"`);
+
+    if (!cleanBase64 || imageByteLength < 1000) {
+      console.warn('[AI-Vision] ⚠️ Screenshot payload is empty or too small, skipping vision request.');
+      return {
+        questionDetected: "Screen Unclear",
+        hint: "The captured screenshot was empty or unreadable. Please ensure your window is visible and press Capture again.",
+        codeSnippet: ""
+      };
+    }
+
     const instructionPrompt = userInstruction && userInstruction.trim().length > 0
       ? `USER TYPED INSTRUCTION: "${userInstruction.trim()}"`
-      : 'No specific instruction typed. Provide the full solution and analysis for the screen content.';
+      : 'No specific instruction typed. Provide the full solution and analysis for the exact problem visible on screen.';
+
+    // Strictly vision-capable models (DO NOT include text-only models like llama-3.3-70b-versatile)
+    const visionFallbackModels = ai.client.baseURL?.includes('groq.com')
+      ? ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
+      : ['gpt-4o-mini', 'gpt-4o'];
 
     try {
       const response = await createChatCompletionWithFallback(ai, {
         messages: [
           {
             role: 'system',
-            content: `You are an expert real-time technical interview companion analyzing a live screen capture.
+            content: `You are an expert real-time technical interview companion analyzing a live screen capture image.
 
-STRICT SCREEN ANALYSIS & INSTRUCTION RULES:
-1. READ VISIBLE SCREEN CONTENT ACCURATELY:
-   - Identify the exact problem, question, code snippet, MCQ options, or diagram visible in the screenshot (e.g. "Sort Colors", "Two Sum", MCQ question, or system design diagram).
+MANDATORY VISION & PROBLEM IDENTIFICATION RULES:
+1. READ VISIBLE SCREEN CAPTURE IMAGE CONTENT EXCLUSIVELY:
+   - Inspect the provided image carefully. Identify the EXACT problem title, description, constraints, and code editor content shown on screen (e.g., LeetCode "75. Sort Colors", "Two Sum", MCQ question, or system architecture diagram).
+   - DO NOT invent, substitute, or assume a different problem (such as "second largest element in an array") that is NOT shown in the image!
+   - If the image shows "Sort Colors" (sort an array of 0s, 1s, 2s in-place), you MUST solve Sort Colors using the Dutch National Flag algorithm.
+
 2. FOLLOW USER'S TYPED INSTRUCTION STRICTLY:
-   - If the user asks for code in a specific language (e.g. "write code in java", "python solution", "C++ code"), output FULL WORKING CODE strictly in that requested language in the "codeSnippet" field!
-   - If the screenshot shows a Multiple Choice Question (MCQ), state the correct option clearly with a 2-line explanation in the "hint" field.
-   - If the screenshot shows a conceptual question or diagram, provide a direct, concise technical explanation in "hint".
-3. OUTPUT FORMAT:
-   - "questionDetected": Exact problem title / topic detected on screen.
-   - "hint": Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer.
-   - "codeSnippet": Full working solution code in the exact requested programming language (or empty string if non-coding screen).
+   - If the user instruction requests code in a specific language (e.g. "code in java", "python solution"), output FULL WORKING CODE strictly in that requested language for the VISIBLE problem in the "codeSnippet" field!
+   - If the screenshot shows a Multiple Choice Question (MCQ), state the correct option with a 2-line explanation in "hint".
+   - If the screenshot shows a conceptual question or system design diagram, provide a direct, concise technical explanation in "hint".
 
-Output strictly as JSON in the following format:
+3. IF SCREEN IS UNREADABLE:
+   - If no text or problem is legible in the screenshot, set "questionDetected" to "Screen Unclear" and state in "hint" that the screenshot was not legible. Never guess a random problem.
+
+Output strictly valid JSON matching this format:
 {
-  "questionDetected": "Exact problem name or topic detected on screen",
-  "hint": "Constructive hints, optimal approach, Time/Space Complexity O(...), or MCQ answer",
-  "codeSnippet": "Complete working solution code for the problem on screen"
+  "questionDetected": "Exact problem name or topic visible on screen",
+  "hint": "Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer",
+  "codeSnippet": "Complete working solution code for the VISIBLE problem in requested language"
 }`
           },
           {
@@ -409,21 +429,24 @@ Output strictly as JSON in the following format:
               {
                 type: 'image_url',
                 image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`
+                  url: `data:image/png;base64,${cleanBase64}`
                 }
               }
             ]
           }
         ],
         response_format: { type: 'json_object' }
-      }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile']);
+      }, visionFallbackModels);
 
-      return JSON.parse(response.choices[0].message.content || '{}');
-    } catch (err) {
-      console.warn('[OpenAIService.analyzeScreen] AI vision error, returning fallback screen response:', err);
+      const content = response.choices[0].message.content || '{}';
+      const parsed = JSON.parse(content);
+      console.log(`[AI-Vision] ✅ Vision analysis successful. Detected: "${parsed.questionDetected}"`);
+      return parsed;
+    } catch (err: any) {
+      console.warn('[OpenAIService.analyzeScreen] AI vision error, returning clear fallback:', err?.message || err);
       return {
-        questionDetected: "Question detected on screen",
-        hint: "I detected content on your screen. Speak or type your question directly into the chat for a precise AI answer.",
+        questionDetected: "Screen Analysis Unavailable",
+        hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
         codeSnippet: ""
       };
     }
