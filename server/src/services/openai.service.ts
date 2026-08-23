@@ -391,12 +391,10 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
       ? ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
       : ['gpt-4o-mini', 'gpt-4o'];
 
-    try {
-      const response = await createChatCompletionWithFallback(ai, {
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert real-time technical interview companion analyzing a live screen capture image.
+    const messages: any[] = [
+      {
+        role: 'system',
+        content: `You are an expert real-time technical interview companion analyzing a live screen capture image.
 
 MANDATORY VISION & PROBLEM IDENTIFICATION RULES:
 1. READ VISIBLE SCREEN CAPTURE IMAGE CONTENT EXCLUSIVELY:
@@ -418,23 +416,39 @@ Output strictly valid JSON matching this format:
   "hint": "Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer",
   "codeSnippet": "Complete working solution code for the VISIBLE problem in requested language"
 }`
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Candidate's Resume:\n${resumeText}\n\n${instructionPrompt}`
           },
           {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Candidate's Resume:\n${resumeText}\n\n${instructionPrompt}`
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/png;base64,${cleanBase64}`
-                }
-              }
-            ]
+            type: 'image_url',
+            image_url: {
+              url: `data:image/png;base64,${cleanBase64}`
+            }
           }
-        ],
+        ]
+      }
+    ];
+
+    console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Final vision payload structure sent to AI:`, JSON.stringify({
+      targetModels: visionFallbackModels,
+      messageCount: messages.length,
+      messagesSummary: messages.map(m => ({
+        role: m.role,
+        isContentArray: Array.isArray(m.content),
+        contentTypes: Array.isArray(m.content) ? m.content.map((c: any) => c.type) : 'text_string',
+        hasImageUrl: Array.isArray(m.content) ? m.content.some((c: any) => c.type === 'image_url') : false,
+        imagePrefix: Array.isArray(m.content) ? m.content.find((c: any) => c.type === 'image_url')?.image_url?.url?.slice(0, 30) + '...' : null
+      }))
+    }, null, 2));
+
+    try {
+      const response = await createChatCompletionWithFallback(ai, {
+        messages,
         response_format: { type: 'json_object' }
       }, visionFallbackModels);
 

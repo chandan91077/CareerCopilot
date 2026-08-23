@@ -898,16 +898,14 @@ export default function AssistantOverlay() {
     setScreenInput('');
   }, []);
 
-  const submitScreenInput = useCallback(async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const userInstruction = screenInput.trim();
-    const currentImage = capturedScreen;
+  const sendScreenAnalysis = useCallback(async (currentImage: string | null, userInstruction: string) => {
+    const imageByteLength = currentImage ? Math.round((currentImage.length * 3) / 4) : 0;
+    console.log(`[CLIENT-VISION-SEND] 📸 Sending screen analysis request. Base64 length: ${currentImage?.length || 0} chars (~${imageByteLength} bytes). Instruction: "${userInstruction}"`);
 
-    if (!userInstruction && !currentImage) return;
-
-    // Reset capture input bar immediately
+    // Reset capture states immediately
     setCapturedScreen(null);
     setScreenInput('');
+    setInputVal('');
     setLoading(true);
 
     try {
@@ -939,28 +937,40 @@ export default function AssistantOverlay() {
       throw new Error('Screen analysis request failed');
     } catch (err) {
       console.error('[ScreenCapture] Error analyzing screen:', err);
-      if (userInstruction) {
-        answerNow(userInstruction);
-      } else {
-        pushQA({
-          question: '📸 Screen Capture',
-          text: 'Could not process screenshot image. Please try typing your question.'
-        });
-      }
+      pushQA({
+        question: userInstruction ? `📸 Screen: ${userInstruction}` : '📸 Screen Capture',
+        text: 'Could not process screenshot with vision AI. Please make sure your window is visible and try capturing again.',
+        code: ''
+      });
     } finally {
       setLoading(false);
     }
-  }, [screenInput, capturedScreen, pushQA, answerNow]);
+  }, [pushQA]);
+
+  const submitScreenInput = useCallback((e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const userInstruction = screenInput.trim();
+    if (!capturedScreen && !userInstruction) return;
+    sendScreenAnalysis(capturedScreen, userInstruction);
+  }, [screenInput, capturedScreen, sendScreenAnalysis]);
 
   // ── Manual text submit ──────────────────────────────────────────
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const q = inputVal.trim();
-    if (!q) return;
+    if (!q && !capturedScreen) return;
+
+    // If a screenshot was captured, route to vision endpoint regardless of which input box was used!
+    if (capturedScreen) {
+      console.log('[CLIENT-SUBMIT] 📸 Captured screen present, routing to sendScreenAnalysis!');
+      sendScreenAnalysis(capturedScreen, q);
+      return;
+    }
+
     setInputVal('');
     answeredRef.current = new Set();
     answerNow(q);
-  }, [inputVal, answerNow]);
+  }, [inputVal, capturedScreen, sendScreenAnalysis, answerNow]);
 
   // ── Mic button cycle: off → mic → speaker → off ─────────────────
   const cycleAudioMode = useCallback(() => {
