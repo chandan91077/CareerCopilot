@@ -359,7 +359,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
     }
   }
 
-  static async analyzeScreen(base64Image: string, resumeText: string) {
+  static async analyzeScreen(base64Image: string, resumeText: string, userInstruction?: string) {
     const ai = getOpenAIClient();
     if (!ai) {
       return {
@@ -369,22 +369,33 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
       };
     }
 
+    const instructionPrompt = userInstruction && userInstruction.trim().length > 0
+      ? `USER TYPED INSTRUCTION: "${userInstruction.trim()}"`
+      : 'No specific instruction typed. Provide the full solution and analysis for the screen content.';
+
     try {
       const response = await createChatCompletionWithFallback(ai, {
         messages: [
           {
             role: 'system',
-            content: `You are an expert real-time technical interview companion.
-Review the screen capture showing a LeetCode problem, coding problem description, diagram, or interview code prompt.
-1. Identify the EXACT problem title and requirements visible on screen (e.g. "268. Missing Number", "Two Sum", "Reverse Linked List", "3Sum").
-2. In the "questionDetected" field, state the exact problem name and key constraints.
-3. In the "hint" field, provide step-by-step logic, optimal approach, Time Complexity O(...) and Space Complexity O(...).
-4. In the "codeSnippet" field, provide the COMPLETE WORKING CODE SOLUTION in the language visible on screen (or Java/Python).
+            content: `You are an expert real-time technical interview companion analyzing a live screen capture.
+
+STRICT SCREEN ANALYSIS & INSTRUCTION RULES:
+1. READ VISIBLE SCREEN CONTENT ACCURATELY:
+   - Identify the exact problem, question, code snippet, MCQ options, or diagram visible in the screenshot (e.g. "Sort Colors", "Two Sum", MCQ question, or system design diagram).
+2. FOLLOW USER'S TYPED INSTRUCTION STRICTLY:
+   - If the user asks for code in a specific language (e.g. "write code in java", "python solution", "C++ code"), output FULL WORKING CODE strictly in that requested language in the "codeSnippet" field!
+   - If the screenshot shows a Multiple Choice Question (MCQ), state the correct option clearly with a 2-line explanation in the "hint" field.
+   - If the screenshot shows a conceptual question or diagram, provide a direct, concise technical explanation in "hint".
+3. OUTPUT FORMAT:
+   - "questionDetected": Exact problem title / topic detected on screen.
+   - "hint": Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer.
+   - "codeSnippet": Full working solution code in the exact requested programming language (or empty string if non-coding screen).
 
 Output strictly as JSON in the following format:
 {
-  "questionDetected": "Exact problem name detected on screen",
-  "hint": "Constructive hints, optimal approach, Time Complexity O(...) and Space Complexity O(...)",
+  "questionDetected": "Exact problem name or topic detected on screen",
+  "hint": "Constructive hints, optimal approach, Time/Space Complexity O(...), or MCQ answer",
   "codeSnippet": "Complete working solution code for the problem on screen"
 }`
           },
@@ -393,7 +404,7 @@ Output strictly as JSON in the following format:
             content: [
               {
                 type: 'text',
-                text: `Candidate's Resume:\n${resumeText}`
+                text: `Candidate's Resume:\n${resumeText}\n\n${instructionPrompt}`
               },
               {
                 type: 'image_url',

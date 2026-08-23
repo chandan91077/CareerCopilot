@@ -25,9 +25,9 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 
-// POST /assistant/analyze-screen - Analyze base64 image capture against user resume
-router.post('/analyze-screen', authMiddleware, async (req: AuthRequest, res: Response) => {
-  const { image } = req.body;
+// POST /assistant/analyze-screen - Analyze base64 image capture against user resume & optional typed instruction
+router.post('/analyze-screen', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
+  const { image, userInstruction } = req.body;
 
   try {
     // Retrieve user's latest parsed resume
@@ -45,7 +45,7 @@ router.post('/analyze-screen', authMiddleware, async (req: AuthRequest, res: Res
       };
     } else {
       try {
-        analysis = await OpenAIService.analyzeScreen(image, resumeText);
+        analysis = await OpenAIService.analyzeScreen(image, resumeText, userInstruction);
         if (!analysis || !analysis.hint) throw new Error('Empty response');
       } catch (aiErr) {
         // Graceful fallback if OpenAI vision fails

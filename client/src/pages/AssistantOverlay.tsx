@@ -898,14 +898,59 @@ export default function AssistantOverlay() {
     setScreenInput('');
   }, []);
 
-  const submitScreenInput = useCallback((e?: React.FormEvent) => {
+  const submitScreenInput = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const q = screenInput.trim();
-    if (!q) return;
+    const userInstruction = screenInput.trim();
+    const currentImage = capturedScreen;
+
+    if (!userInstruction && !currentImage) return;
+
+    // Reset capture input bar immediately
     setCapturedScreen(null);
     setScreenInput('');
-    answerNow(q);
-  }, [screenInput, answerNow]);
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl('/api/assistant/analyze-screen'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          image: currentImage || '',
+          userInstruction: userInstruction
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.analysis) {
+          const { questionDetected, hint, codeSnippet } = data.analysis;
+          pushQA({
+            question: userInstruction ? `📸 Screen: ${userInstruction}` : `📸 Screen: ${questionDetected || 'Screen Analysis'}`,
+            text: hint || 'Screen analyzed.',
+            code: codeSnippet
+          });
+          return;
+        }
+      }
+      throw new Error('Screen analysis request failed');
+    } catch (err) {
+      console.error('[ScreenCapture] Error analyzing screen:', err);
+      if (userInstruction) {
+        answerNow(userInstruction);
+      } else {
+        pushQA({
+          question: '📸 Screen Capture',
+          text: 'Could not process screenshot image. Please try typing your question.'
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [screenInput, capturedScreen, pushQA, answerNow]);
 
   // ── Manual text submit ──────────────────────────────────────────
   const handleSubmit = useCallback((e?: React.FormEvent) => {
