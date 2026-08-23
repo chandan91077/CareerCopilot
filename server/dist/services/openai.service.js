@@ -11,8 +11,37 @@ const GROQ_TEXT_FALLBACKS = [
     'gemma2-9b-it',
     'llama-3.2-3b-preview',
     'mixtral-8x7b-32768',
-    'deepseek-r1-distill-llama-70b'
+    'llama-3.2-1b-preview'
 ];
+let cachedGroqModels = null;
+let lastModelFetchTime = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+async function getActiveGroqModels(ai) {
+    const now = Date.now();
+    if (cachedGroqModels && cachedGroqModels.length > 0 && (now - lastModelFetchTime < CACHE_TTL_MS)) {
+        return cachedGroqModels;
+    }
+    try {
+        const list = await ai.client.models.list();
+        const activeTextModels = list.data
+            .map((m) => m.id)
+            .filter((id) => !id.includes('whisper') &&
+            !id.includes('vision') &&
+            !id.includes('guard') &&
+            !id.includes('safeguard') &&
+            !id.includes('decommissioned'));
+        if (activeTextModels.length > 0) {
+            console.log('[AI-Fallback] Live active Groq text models retrieved:', activeTextModels);
+            cachedGroqModels = activeTextModels;
+            lastModelFetchTime = now;
+            return activeTextModels;
+        }
+    }
+    catch (err) {
+        console.warn('[AI-Fallback] Dynamic model list fetch failed, utilizing static fallback list:', err?.message || err);
+    }
+    return GROQ_TEXT_FALLBACKS;
+}
 const getOpenAIClient = () => {
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey && openaiKey.trim().length > 0) {
@@ -36,7 +65,12 @@ const getOpenAIClient = () => {
     return null;
 };
 async function createChatCompletionWithFallback(ai, payload, fallbackModels = GROQ_TEXT_FALLBACKS) {
-    const modelsToTry = Array.from(new Set([ai.model, ...fallbackModels]));
+    let activeFallbacks = fallbackModels;
+    const isGroq = ai.client.baseURL?.includes('groq.com');
+    if (isGroq) {
+        activeFallbacks = await getActiveGroqModels(ai);
+    }
+    const modelsToTry = Array.from(new Set([ai.model, ...activeFallbacks]));
     let lastError;
     for (const modelName of modelsToTry) {
         try {
@@ -47,11 +81,13 @@ async function createChatCompletionWithFallback(ai, payload, fallbackModels = GR
         }
         catch (err) {
             lastError = err;
-            console.warn(`[AI-Fallback] ❌ Model ${modelName} failed (${err?.status || err?.message || err}). Trying next fallback model...`);
+            const status = err?.status || err?.statusCode || 'unknown';
+            const msg = err?.message || String(err);
+            console.warn(`[AI-Fallback] ❌ Model "${modelName}" failed (status: ${status}, message: ${msg}). Falling back to next model...`);
         }
     }
-    console.error('[AI-Fallback] ❌ All model fallback attempts failed!');
-    throw lastError;
+    console.error('[AI-Fallback] ❌ All fallback models failed! Last raw error:', lastError?.message || lastError);
+    throw new Error('AI service temporarily unavailable — all fallback models failed.');
 }
 // Fallback Mock Responses for development if API key is not present or fails
 const mocks = {
