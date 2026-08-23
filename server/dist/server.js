@@ -65,6 +65,32 @@ app.use('/api/coding', coding_routes_1.default);
 app.use('/api/payment', payment_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
 app.use('/api/screen-share', screenShare_routes_1.default);
+// Desktop EXE Installer Metadata Endpoint
+app.get('/api/download/desktop/meta', (req, res) => {
+    const possiblePaths = [
+        path_1.default.join(__dirname, '../public/downloads/CareerCopilotSetup.exe'),
+        path_1.default.join(__dirname, '../../desktop/release/CareerCopilotSetup.exe'),
+        path_1.default.join(process.cwd(), 'public/downloads/CareerCopilotSetup.exe'),
+        path_1.default.join(process.cwd(), '../desktop/release/CareerCopilotSetup.exe'),
+        path_1.default.join(__dirname, '../public/downloads/InterviewAISetup.exe'),
+        path_1.default.join(__dirname, '../../desktop/release/InterviewAISetup.exe'),
+        path_1.default.join(process.cwd(), 'public/downloads/InterviewAISetup.exe'),
+        path_1.default.join(process.cwd(), '../desktop/release/InterviewAISetup.exe')
+    ];
+    for (const exePath of possiblePaths) {
+        if (fs_1.default.existsSync(exePath)) {
+            const stats = fs_1.default.statSync(exePath);
+            return res.json({
+                filename: 'CareerCopilotSetup.exe',
+                sizeBytes: stats.size,
+                sizeMB: (stats.size / (1024 * 1024)).toFixed(1),
+                lastModified: stats.mtime.toISOString(),
+                version: '1.0.0'
+            });
+        }
+    }
+    return res.status(404).json({ success: false, message: 'Desktop installer binary not found on server' });
+});
 // Desktop EXE Installer Download Endpoint
 app.get('/api/download/desktop', (req, res) => {
     const possiblePaths = [

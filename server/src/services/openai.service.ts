@@ -9,11 +9,10 @@ interface AIClientConfig {
 
 const GROQ_TEXT_FALLBACKS = [
   'llama-3.3-70b-versatile',
-  'llama3-70b-8192',
-  'llama3-8b-8192',
+  'gemma2-9b-it',
+  'llama-3.2-3b-preview',
   'mixtral-8x7b-32768',
-  'deepseek-r1-distill-llama-70b',
-  'llama-3.1-8b-instant'
+  'deepseek-r1-distill-llama-70b'
 ];
 
 const getOpenAIClient = (): AIClientConfig | null => {
