@@ -29,6 +29,9 @@ if (!process.env.OPENAI_API_KEY) {
 router.post('/analyze-screen', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const { image, userInstruction } = req.body;
 
+  const imageLen = image ? image.length : 0;
+  console.log(`[ANALYZE-SCREEN] Incoming request. Body keys: [${Object.keys(req.body || {}).join(', ')}]. Image present: ${!!image}, type: ${typeof image}, length: ${imageLen} chars (~${Math.round((imageLen * 3) / 4)} bytes), instruction: "${userInstruction || 'none'}"`);
+
   try {
     // Retrieve user's latest parsed resume
     const userResume = await Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
@@ -38,6 +41,7 @@ router.post('/analyze-screen', optionalAuthMiddleware, async (req: AuthRequest, 
 
     // If no valid image or OpenAI fails, return a helpful coaching fallback
     if (!image || image === 'mock' || image === '') {
+      console.warn('[ANALYZE-SCREEN] ⚠️ No image payload provided in request body.');
       analysis = {
         questionDetected: 'Screen captured — awaiting question detection',
         hint: 'Your screen has been captured. If you see an interview question on screen, describe it in the chat below and I will provide a tailored answer based on your resume and experience.',
