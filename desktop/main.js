@@ -10,16 +10,57 @@ let localPort;
 let localServer;
 let isQuitting = false;
 
+// ─── Persistent Lifecycle & Heartbeat Logging ───────────────────────
+const lifecycleLogDir = app.getPath('userData');
+const lifecycleLogPrimary = path.join(lifecycleLogDir, 'careercopilot-lifecycle.log');
+const lifecycleLogLocal = path.join(__dirname, 'careercopilot-lifecycle.log');
+
+function writeLifecycleLog(level, message, meta = null) {
+  const timestamp = new Date().toISOString();
+  const metaStr = meta ? ` | ${typeof meta === 'object' ? JSON.stringify(meta) : meta}` : '';
+  const logLine = `[${timestamp}] [${level}] ${message}${metaStr}\n`;
+
+  // Standard output
+  console.log(logLine.trim());
+
+  // Safe file writes to both userData and local folder
+  [lifecycleLogPrimary, lifecycleLogLocal].forEach((targetPath) => {
+    try {
+      const dir = path.dirname(targetPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(targetPath, logLine, 'utf8');
+
+      // Auto-prune if file exceeds 3MB to prevent unbounded disk usage
+      if (fs.statSync(targetPath).size > 3 * 1024 * 1024) {
+        const raw = fs.readFileSync(targetPath, 'utf8');
+        const lines = raw.split('\n');
+        fs.writeFileSync(targetPath, lines.slice(-2000).join('\n'), 'utf8');
+      }
+    } catch (_) {}
+  });
+}
+
+writeLifecycleLog('INFO', '=== CareerCopilot Desktop Process Initialized ===', {
+  pid: process.pid,
+  platform: process.platform,
+  version: app.getVersion(),
+  isPackaged: app.isPackaged
+});
+
 // ─── Single Instance Lock ──────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  console.log('[APP] Another instance is already running. Quitting.');
+  writeLifecycleLog('WARN', '[APP] Another instance is already running. Quitting duplicate instance.', { pid: process.pid });
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
+  app.on('second-instance', (event, commandLine) => {
+    writeLifecycleLog('INFO', '[APP] Second instance detected. Restoring and focusing primary overlay.', { commandLine });
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
+      if (typeof reassertAlwaysOnTopAndWorkspace === 'function') {
+        reassertAlwaysOnTopAndWorkspace(mainWindow, 'second-instance');
+      }
       mainWindow.focus();
     }
   });
@@ -211,6 +252,7 @@ async function captureActiveScreenBase64() {
 }
 
 let SetWindowDisplayAffinity = null;
+let SetWindowPos = null;
 let SetCursorPos = null;
 let mouse_event = null;
 let keybd_event = null;
@@ -220,13 +262,14 @@ try {
   const koffi = require('koffi');
   const user32 = koffi.load('user32.dll');
   SetWindowDisplayAffinity = user32.func('bool SetWindowDisplayAffinity(uint64 hWnd, uint32 dwAffinity)');
+  SetWindowPos = user32.func('bool SetWindowPos(uint64 hWnd, int64 hWndInsertAfter, int X, int Y, int cx, int cy, uint32 uFlags)');
   SetCursorPos = user32.func('bool SetCursorPos(int x, int y)');
   mouse_event = user32.func('void mouse_event(uint32 dwFlags, uint32 dx, uint32 dy, uint32 dwData, uint64 dwExtraInfo)');
   keybd_event = user32.func('void keybd_event(uint8 bVk, uint8 bScan, uint32 dwFlags, uint64 dwExtraInfo)');
   GetSystemMetrics = user32.func('int GetSystemMetrics(int nIndex)');
-  console.log('[WIN32] Loaded SetWindowDisplayAffinity & Remote Control APIs via koffi FFI');
+  writeLifecycleLog('INFO', '[WIN32] Loaded SetWindowPos, SetWindowDisplayAffinity & Remote Control APIs via koffi FFI');
 } catch (e) {
-  console.warn('[WIN32] Could not load koffi FFI:', e.message);
+  writeLifecycleLog('WARN', '[WIN32] Could not load koffi FFI:', { error: e.message });
 }
 
 function getVirtualKeyCode(key) {
@@ -261,7 +304,6 @@ function applyWin32ContentProtection(win) {
 
   try {
     win.setContentProtection(true);
-    win.setAlwaysOnTop(true, 'screen-saver');
   } catch (_) {}
 
   if (SetWindowDisplayAffinity && process.platform === 'win32') {
@@ -273,15 +315,47 @@ function applyWin32ContentProtection(win) {
         const res11 = SetWindowDisplayAffinity(hwnd, 0x00000011);
         if (!res11) {
           // 0x00000001 = WDA_MONITOR (renders black box in screen share/screenshots)
-          const res1 = SetWindowDisplayAffinity(hwnd, 0x00000001);
-          console.log('[WIN32] SetWindowDisplayAffinity WDA_MONITOR (0x1):', res1);
-        } else {
-          console.log('[WIN32] SetWindowDisplayAffinity WDA_EXCLUDEFROMCAPTURE (0x11): success');
+          SetWindowDisplayAffinity(hwnd, 0x00000001);
         }
       }
     } catch (err) {
-      console.error('[WIN32] SetWindowDisplayAffinity error:', err);
+      writeLifecycleLog('ERROR', '[WIN32] SetWindowDisplayAffinity error:', { error: err.message });
     }
+  }
+}
+
+// ─── Re-assert Always-on-Top and Virtual Desktop Pinning ────────────
+function reassertAlwaysOnTopAndWorkspace(win, reason = 'unknown') {
+  if (!win || win.isDestroyed()) return;
+
+  try {
+    // 1. Electron level: Set to 'screen-saver' (highest Z-order level) with relative level 1
+    win.setAlwaysOnTop(true, 'screen-saver', 1);
+
+    // 2. Windows Virtual Desktops: Pin across ALL workspaces so switching between Desktop 1 and Desktop 2 preserves the overlay
+    if (typeof win.setVisibleOnAllWorkspaces === 'function') {
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    }
+
+    // 3. Keep skipTaskbar enforced (stays tool-style overlay)
+    win.setSkipTaskbar(true);
+
+    // 4. Native Win32 SetWindowPos HWND_TOPMOST reinforcement:
+    // HWND_TOPMOST = -1
+    // SWP_NOSIZE (0x0001) | SWP_NOMOVE (0x0002) | SWP_NOACTIVATE (0x0010) | SWP_SHOWWINDOW (0x0040) = 0x0053
+    // Crucial: SWP_NOACTIVATE keeps it on top WITHOUT stealing focus or keyboard input from active apps
+    if (SetWindowPos && process.platform === 'win32') {
+      const handleBuf = win.getNativeWindowHandle();
+      if (handleBuf && handleBuf.length >= 8) {
+        const hwnd = handleBuf.readBigUInt64LE(0);
+        SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0053);
+      }
+    }
+
+    // 5. Exclude from screen share captures
+    applyWin32ContentProtection(win);
+  } catch (err) {
+    writeLifecycleLog('WARN', `reassertAlwaysOnTopAndWorkspace failed (${reason})`, { error: err.message });
   }
 }
 
@@ -312,18 +386,19 @@ function createWindow() {
     show: false
   });
 
-  // Windows can sometimes re-add the taskbar icon when the window is shown.
-  // Reapply the setting explicitly after creation and on show.
+  // Pin across virtual desktops immediately upon instantiation
+  if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   mainWindow.setSkipTaskbar(true);
-
-  // Exclude overlay from screen shares and recordings (SetWindowDisplayAffinity)
-  mainWindow.setContentProtection(true);
   applyWin32ContentProtection(mainWindow);
 
   const startUrl = isDev
     ? 'http://localhost:5173/assistant'
     : `http://127.0.0.1:${localPort}/assistant`;
 
+  writeLifecycleLog('INFO', '[WINDOW] Loading URL:', { startUrl, isDev });
   mainWindow.loadURL(startUrl);
 
   if (isDev && process.env.DEV_TOOLS === 'true') {
@@ -331,47 +406,58 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.setSkipTaskbar(true);
+    writeLifecycleLog('INFO', '[WINDOW] ready-to-show fired');
     mainWindow.show();
-    mainWindow.setSkipTaskbar(true);
-    applyWin32ContentProtection(mainWindow);
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setSkipTaskbar(true);
-        applyWin32ContentProtection(mainWindow);
-      }
-    }, 500);
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setSkipTaskbar(true);
-        applyWin32ContentProtection(mainWindow);
-      }
-    }, 1500);
+    reassertAlwaysOnTopAndWorkspace(mainWindow, 'ready-to-show');
 
-    // Continuously re-enforce screen protection and skipTaskbar every 1 second
+    // Sequential reinforcements during initial display phase
+    setTimeout(() => reassertAlwaysOnTopAndWorkspace(mainWindow, 'startup-500ms'), 500);
+    setTimeout(() => reassertAlwaysOnTopAndWorkspace(mainWindow, 'startup-1500ms'), 1500);
+
+    // Heartbeat timer every 2500ms:
+    // 1. Logs liveness & state to careercopilot-lifecycle.log
+    // 2. Re-asserts topmost and virtual workspace
     setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setSkipTaskbar(true);
-        applyWin32ContentProtection(mainWindow);
+        const memMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+        writeLifecycleLog('HEARTBEAT', `PID: ${process.pid} | Mem: ${memMb}MB | Visible: ${mainWindow.isVisible()} | Minimized: ${mainWindow.isMinimized()} | Focused: ${mainWindow.isFocused()} | Bounds: ${JSON.stringify(mainWindow.getBounds())}`);
+        reassertAlwaysOnTopAndWorkspace(mainWindow, 'heartbeat-interval');
       }
-    }, 1000);
+    }, 2500);
+  });
+
+  // ── Window Focus & Blur Listeners ──────────────────────────
+  mainWindow.on('blur', () => {
+    writeLifecycleLog('INFO', '[WINDOW] blur: another app took focus. Re-asserting topmost and workspace.');
+    // Reclaim top position immediately without stealing focus from the newly active window
+    reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-blur');
   });
 
   mainWindow.on('focus', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setSkipTaskbar(true);
-      applyWin32ContentProtection(mainWindow);
-    }
-  });
-  mainWindow.on('show', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setSkipTaskbar(true);
-    }
+    writeLifecycleLog('INFO', '[WINDOW] focus event received');
+    reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-focus');
   });
 
+  mainWindow.on('show', () => {
+    writeLifecycleLog('INFO', '[WINDOW] show event received');
+    reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-show');
+  });
+
+  mainWindow.on('hide', () => {
+    writeLifecycleLog('WARN', '[WINDOW] hide event received', { callStack: new Error().stack });
+  });
+
+  mainWindow.on('minimize', () => {
+    writeLifecycleLog('WARN', '[WINDOW] minimize event received');
+  });
+
+  mainWindow.on('restore', () => {
+    writeLifecycleLog('INFO', '[WINDOW] restore event received');
+    reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-restore');
+  });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log('[WINDOW] Page finished loading');
+    writeLifecycleLog('INFO', '[WINDOW] Page finished loading');
     // Inject permission grant helper into the page context
     mainWindow.webContents.executeJavaScript(`
       // Monkey-patch getUserMedia to always succeed in Electron
@@ -385,33 +471,30 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('media-started-playing', () => {
-    console.log('[MEDIA] Audio playback started');
+    writeLifecycleLog('INFO', '[MEDIA] Audio playback started');
   });
 
   mainWindow.on('close', (event) => {
+    const stack = new Error().stack;
+    writeLifecycleLog('WARN', '[WINDOW] close event received', {
+      isQuitting,
+      callStack: stack
+    });
+
     if (!isQuitting) {
       event.preventDefault();
-      // External WM_CLOSE or accidental window close: confirm with user or keep running in tray
-      const choice = dialog.showMessageBoxSync(mainWindow, {
-        type: 'question',
-        buttons: ['Keep Running in Background', 'Quit CareerCopilot'],
-        defaultId: 0,
-        cancelId: 0,
-        title: 'CareerCopilot - Confirmation',
-        message: 'A close request was received. Do you want to exit CareerCopilot?',
-        detail: 'Click "Keep Running in Background" to keep the assistant active in tray and via hotkeys.'
-      });
-
-      if (choice === 1) {
-        isQuitting = true;
-        app.quit();
-      } else {
-        mainWindow.hide();
+      writeLifecycleLog('INFO', '[CLOSE-GUARD] Intercepted close signal while isQuitting=false. Preventing close and keeping overlay alive.');
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
       }
+      reassertAlwaysOnTopAndWorkspace(mainWindow, 'close-prevented');
+    } else {
+      writeLifecycleLog('INFO', '[WINDOW] Close event permitted as isQuitting=true');
     }
   });
 
   mainWindow.on('closed', () => {
+    writeLifecycleLog('INFO', '[WINDOW] closed event triggered');
     mainWindow = null;
   });
 }
@@ -652,25 +735,15 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
+  writeLifecycleLog('INFO', `[APP] before-quit event triggered. isQuitting=${isQuitting}`);
   if (!isQuitting) {
     event.preventDefault();
-    const choice = dialog.showMessageBoxSync(mainWindow || null, {
-      type: 'question',
-      buttons: ['Keep Running in Background', 'Quit CareerCopilot'],
-      defaultId: 0,
-      cancelId: 0,
-      title: 'CareerCopilot - Confirmation',
-      message: 'A quit signal was received. Are you sure you want to quit CareerCopilot?',
-      detail: 'Choose "Keep Running in Background" to keep the assistant active.'
-    });
-    if (choice === 1) {
-      isQuitting = true;
-      app.quit();
-    }
+    writeLifecycleLog('WARN', '[APP] Prevented unconfirmed before-quit event. Use tray or explicit quit.');
   }
 });
 
 app.on('will-quit', () => {
+  writeLifecycleLog('INFO', '[APP] will-quit event triggered. Cleaning up shortcuts and server.');
   globalShortcut.unregisterAll();
   if (localServer) {
     localServer.close();
@@ -678,7 +751,51 @@ app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', () => {
+  writeLifecycleLog('INFO', `[APP] window-all-closed event triggered. isQuitting=${isQuitting}`);
   if (isQuitting && process.platform !== 'darwin') {
     app.quit();
   }
 });
+
+// ─── Crash & Process Lifecycle Diagnostics ──────────────────────────
+app.on('render-process-gone', (event, webContents, details) => {
+  writeLifecycleLog('FATAL', '[PROCESS] Renderer process gone (crash/killed)', {
+    reason: details.reason,
+    exitCode: details.exitCode
+  });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    writeLifecycleLog('INFO', '[PROCESS] Auto-recovering overlay after renderer crash...');
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const startUrl = isDev
+          ? 'http://localhost:5173/assistant'
+          : `http://127.0.0.1:${localPort}/assistant`;
+        mainWindow.loadURL(startUrl);
+      }
+    }, 1000);
+  }
+});
+
+app.on('child-process-gone', (event, details) => {
+  writeLifecycleLog('WARN', '[PROCESS] Child process gone', {
+    type: details.type,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    serviceName: details.serviceName,
+    name: details.name
+  });
+});
+
+process.on('uncaughtException', (err) => {
+  writeLifecycleLog('FATAL', '[PROCESS] Uncaught Exception in main process', {
+    message: err.message,
+    stack: err.stack
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  writeLifecycleLog('ERROR', '[PROCESS] Unhandled Rejection in main process', {
+    reason: reason instanceof Error ? reason.stack : String(reason)
+  });
+});
+
