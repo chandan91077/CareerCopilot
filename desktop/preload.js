@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Remote mouse/keyboard execution ──────────────────────────────
   executeRemoteInput: (input) => ipcRenderer.invoke('execute-remote-input', input),
 
+  // ── Persistent session storage (survives app restarts & reboots) ───
+  getStoredAuth: () => ipcRenderer.invoke('get-stored-auth'),
+  setStoredAuth: (authData) => ipcRenderer.invoke('set-stored-auth', authData),
+  clearStoredAuth: () => ipcRenderer.invoke('clear-stored-auth'),
+
   // ── Utility: remove a specific IPC listener ─────────────────────
   removeListener: (channel) => ipcRenderer.removeAllListeners(channel),
 });

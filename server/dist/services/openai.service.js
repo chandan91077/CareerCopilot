@@ -327,7 +327,7 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
             return mocks.behavioralReview;
         }
     }
-    static async analyzeScreen(base64Image, resumeText) {
+    static async analyzeScreen(base64Image, resumeText, userInstruction) {
         const ai = getOpenAIClient();
         if (!ai) {
             return {
@@ -336,50 +336,92 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
                 codeSnippet: ""
             };
         }
-        try {
-            const response = await createChatCompletionWithFallback(ai, {
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are an expert real-time technical interview companion.
-Review the screen capture showing a LeetCode problem, coding problem description, diagram, or interview code prompt.
-1. Identify the EXACT problem title and requirements visible on screen (e.g. "268. Missing Number", "Two Sum", "Reverse Linked List", "3Sum").
-2. In the "questionDetected" field, state the exact problem name and key constraints.
-3. In the "hint" field, provide step-by-step logic, optimal approach, Time Complexity O(...) and Space Complexity O(...).
-4. In the "codeSnippet" field, provide the COMPLETE WORKING CODE SOLUTION in the language visible on screen (or Java/Python).
+        const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '').trim();
+        const imageByteLength = Math.round((cleanBase64.length * 3) / 4);
+        console.log(`[AI-Vision] Analyzing screen capture: ${cleanBase64.length} base64 chars (~${imageByteLength} bytes). Instruction: "${userInstruction || 'none'}"`);
+        if (!cleanBase64 || imageByteLength < 1000) {
+            console.warn('[AI-Vision] ⚠️ Screenshot payload is empty or too small, skipping vision request.');
+            return {
+                questionDetected: "Screen Unclear",
+                hint: "The captured screenshot was empty or unreadable. Please ensure your window is visible and press Capture again.",
+                codeSnippet: ""
+            };
+        }
+        const instructionPrompt = userInstruction && userInstruction.trim().length > 0
+            ? `USER TYPED INSTRUCTION: "${userInstruction.trim()}"`
+            : 'No specific instruction typed. Provide the full solution and analysis for the exact problem visible on screen.';
+        // Strictly vision-capable models (DO NOT include text-only models like llama-3.3-70b-versatile)
+        const visionFallbackModels = ai.client.baseURL?.includes('groq.com')
+            ? ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
+            : ['gpt-4o-mini', 'gpt-4o'];
+        const messages = [
+            {
+                role: 'system',
+                content: `You are an expert real-time technical interview companion analyzing a live screen capture image.
 
-Output strictly as JSON in the following format:
+MANDATORY VISION & PROBLEM IDENTIFICATION RULES:
+1. READ VISIBLE SCREEN CAPTURE IMAGE CONTENT EXCLUSIVELY:
+   - Inspect the provided image carefully. Identify the EXACT problem title, description, constraints, and code editor content shown on screen (e.g., LeetCode "75. Sort Colors", "Two Sum", MCQ question, or system architecture diagram).
+   - DO NOT invent, substitute, or assume a different problem (such as "second largest element in an array") that is NOT shown in the image!
+   - If the image shows "Sort Colors" (sort an array of 0s, 1s, 2s in-place), you MUST solve Sort Colors using the Dutch National Flag algorithm.
+
+2. FOLLOW USER'S TYPED INSTRUCTION STRICTLY:
+   - If the user instruction requests code in a specific language (e.g. "code in java", "python solution"), output FULL WORKING CODE strictly in that requested language for the VISIBLE problem in the "codeSnippet" field!
+   - If the screenshot shows a Multiple Choice Question (MCQ), state the correct option with a 2-line explanation in "hint".
+   - If the screenshot shows a conceptual question or system design diagram, provide a direct, concise technical explanation in "hint".
+
+3. IF SCREEN IS UNREADABLE:
+   - If no text or problem is legible in the screenshot, set "questionDetected" to "Screen Unclear" and state in "hint" that the screenshot was not legible. Never guess a random problem.
+
+Output strictly valid JSON matching this format:
 {
-  "questionDetected": "Exact problem name detected on screen",
-  "hint": "Constructive hints, optimal approach, Time Complexity O(...) and Space Complexity O(...)",
-  "codeSnippet": "Complete working solution code for the problem on screen"
+  "questionDetected": "Exact problem name or topic visible on screen",
+  "hint": "Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer",
+  "codeSnippet": "Complete working solution code for the VISIBLE problem in requested language"
 }`
+            },
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'text',
+                        text: `Candidate's Resume:\n${resumeText}\n\n${instructionPrompt}`
                     },
                     {
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'text',
-                                text: `Candidate's Resume:\n${resumeText}`
-                            },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${base64Image}`
-                                }
-                            }
-                        ]
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${cleanBase64}`
+                        }
                     }
-                ],
+                ]
+            }
+        ];
+        console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Final vision payload structure sent to AI:`, JSON.stringify({
+            targetModels: visionFallbackModels,
+            messageCount: messages.length,
+            messagesSummary: messages.map(m => ({
+                role: m.role,
+                isContentArray: Array.isArray(m.content),
+                contentTypes: Array.isArray(m.content) ? m.content.map((c) => c.type) : 'text_string',
+                hasImageUrl: Array.isArray(m.content) ? m.content.some((c) => c.type === 'image_url') : false,
+                imagePrefix: Array.isArray(m.content) ? m.content.find((c) => c.type === 'image_url')?.image_url?.url?.slice(0, 30) + '...' : null
+            }))
+        }, null, 2));
+        try {
+            const response = await createChatCompletionWithFallback(ai, {
+                messages,
                 response_format: { type: 'json_object' }
-            }, ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile']);
-            return JSON.parse(response.choices[0].message.content || '{}');
+            }, visionFallbackModels);
+            const content = response.choices[0].message.content || '{}';
+            const parsed = JSON.parse(content);
+            console.log(`[AI-Vision] ✅ Vision analysis successful. Detected: "${parsed.questionDetected}"`);
+            return parsed;
         }
         catch (err) {
-            console.warn('[OpenAIService.analyzeScreen] AI vision error, returning fallback screen response:', err);
+            console.warn('[OpenAIService.analyzeScreen] AI vision error, returning clear fallback:', err?.message || err);
             return {
-                questionDetected: "Question detected on screen",
-                hint: "I detected content on your screen. Speak or type your question directly into the chat for a precise AI answer.",
+                questionDetected: "Screen Analysis Unavailable",
+                hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
                 codeSnippet: ""
             };
         }

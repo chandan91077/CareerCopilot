@@ -125,9 +125,10 @@ export function useScreenShare() {
                 chromeMediaSource: 'desktop',
                 chromeMediaSourceId: sourceIdToUse,
                 minWidth: 1280,
-                maxWidth: 1920,
+                maxWidth: 3840,
                 minHeight: 720,
-                maxHeight: 1080,
+                maxHeight: 2160,
+                maxFrameRate: 30,
               },
             } as any,
           });

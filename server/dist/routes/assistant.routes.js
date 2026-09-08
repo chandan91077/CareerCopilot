@@ -22,9 +22,11 @@ if (!process.env.OPENAI_API_KEY) {
         '║  Add your key: OPENAI_API_KEY=sk-...                        ║\n' +
         '╚══════════════════════════════════════════════════════════════╝\n');
 }
-// POST /assistant/analyze-screen - Analyze base64 image capture against user resume
-router.post('/analyze-screen', auth_middleware_1.authMiddleware, async (req, res) => {
-    const { image } = req.body;
+// POST /assistant/analyze-screen - Analyze base64 image capture against user resume & optional typed instruction
+router.post('/analyze-screen', auth_middleware_1.optionalAuthMiddleware, async (req, res) => {
+    const { image, userInstruction } = req.body;
+    const imageLen = image ? image.length : 0;
+    console.log(`[ANALYZE-SCREEN] Incoming request. Body keys: [${Object.keys(req.body || {}).join(', ')}]. Image present: ${!!image}, type: ${typeof image}, length: ${imageLen} chars (~${Math.round((imageLen * 3) / 4)} bytes), instruction: "${userInstruction || 'none'}"`);
     try {
         // Retrieve user's latest parsed resume
         const userResume = await models_1.Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
@@ -32,6 +34,7 @@ router.post('/analyze-screen', auth_middleware_1.authMiddleware, async (req, res
         let analysis;
         // If no valid image or OpenAI fails, return a helpful coaching fallback
         if (!image || image === 'mock' || image === '') {
+            console.warn('[ANALYZE-SCREEN] ⚠️ No image payload provided in request body.');
             analysis = {
                 questionDetected: 'Screen captured — awaiting question detection',
                 hint: 'Your screen has been captured. If you see an interview question on screen, describe it in the chat below and I will provide a tailored answer based on your resume and experience.',
@@ -40,7 +43,7 @@ router.post('/analyze-screen', auth_middleware_1.authMiddleware, async (req, res
         }
         else {
             try {
-                analysis = await openai_service_1.OpenAIService.analyzeScreen(image, resumeText);
+                analysis = await openai_service_1.OpenAIService.analyzeScreen(image, resumeText, userInstruction);
                 if (!analysis || !analysis.hint)
                     throw new Error('Empty response');
             }

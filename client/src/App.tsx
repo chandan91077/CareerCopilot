@@ -34,12 +34,31 @@ const ElectronHandler = () => {
     const isElectron = !!(window as any).electronAPI;
     if (isElectron) {
       document.body.classList.add('electron-body');
-      const token = localStorage.getItem('token');
-      if (token) {
-        navigate('/assistant');
-      } else {
-        navigate('/login');
-      }
+
+      const checkAuth = async () => {
+        let token = localStorage.getItem('token');
+        if (!token && (window as any).electronAPI?.getStoredAuth) {
+          try {
+            const stored = await (window as any).electronAPI.getStoredAuth();
+            if (stored && stored.token) {
+              localStorage.setItem('token', stored.token);
+              if (stored.refreshToken) localStorage.setItem('refreshToken', stored.refreshToken);
+              if (stored.user) localStorage.setItem('user', JSON.stringify(stored.user));
+              token = stored.token;
+            }
+          } catch (e) {
+            console.warn('[APP] Error retrieving stored auth from desktop:', e);
+          }
+        }
+
+        if (token) {
+          navigate('/assistant');
+        } else {
+          navigate('/login');
+        }
+      };
+
+      checkAuth();
     }
   }, [navigate]);
 

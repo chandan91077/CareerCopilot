@@ -40,7 +40,23 @@ export default function Register() {
         targetRole
       });
       localStorage.setItem('token', response.data.token);
+      if (response.data.refreshToken) {
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+      }
       localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      if ((window as any).electronAPI?.setStoredAuth) {
+        try {
+          await (window as any).electronAPI.setStoredAuth({
+            token: response.data.token,
+            refreshToken: response.data.refreshToken,
+            user: response.data.user,
+          });
+        } catch (e) {
+          console.warn('[REGISTER] Could not persist auth to desktop storage:', e);
+        }
+      }
+
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');

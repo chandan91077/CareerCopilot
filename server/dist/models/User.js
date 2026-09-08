@@ -37,5 +37,8 @@ const userSchema = new mongoose_1.Schema({
     resetPasswordExpires: {
         type: Date,
     },
+    refreshToken: {
+        type: String,
+    },
 }, { timestamps: true });
 exports.User = (0, mongoose_1.model)('User', userSchema);

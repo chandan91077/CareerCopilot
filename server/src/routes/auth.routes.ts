@@ -5,13 +5,20 @@ import { User, Profile } from '../models';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-change-in-prod';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || JWT_SECRET + '_refresh';
 
-function generateToken(user: any) {
-  return jwt.sign(
+function generateTokens(user: any) {
+  const token = jwt.sign(
     { id: user._id, email: user.email, role: user.role, plan: user.plan },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
+  const refreshToken = jwt.sign(
+    { id: user._id, email: user.email },
+    JWT_REFRESH_SECRET,
+    { expiresIn: '90d' }
+  );
+  return { token, refreshToken };
 }
 
 // POST /register
@@ -55,10 +62,13 @@ router.post('/register', async (req: Request, res: Response) => {
     // Log the verification link for local environment testing
     console.log(`[AUTH] Verification token created for user: ${email} -> ${verificationToken}`);
 
-    const token = generateToken(user);
+    const { token, refreshToken } = generateTokens(user);
+    user.refreshToken = refreshToken;
+    await user.save();
 
     return res.status(201).json({
       token,
+      refreshToken,
       user: {
         id: user._id,
         email: user.email,
@@ -105,10 +115,13 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const profile = await Profile.findOne({ user: user._id });
-    const token = generateToken(user);
+    const { token, refreshToken } = generateTokens(user);
+    user.refreshToken = refreshToken;
+    await user.save();
 
     return res.json({
       token,
+      refreshToken,
       user: {
         id: user._id,
         email: user.email,
@@ -127,6 +140,48 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Login error:', error);
     return res.status(500).json({ message: 'Server error during login' });
+  }
+});
+
+// POST /refresh
+router.post('/refresh', async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+
+  try {
+    if (!refreshToken) {
+      return res.status(400).json({ message: 'Refresh token is required' });
+    }
+
+    let decoded: any;
+    try {
+      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: 'Invalid or expired refresh token' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    const tokens = generateTokens(user);
+    user.refreshToken = tokens.refreshToken;
+    await user.save();
+
+    return res.json({
+      token: tokens.token,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        plan: user.plan,
+        isVerified: user.isVerified,
+      }
+    });
+  } catch (error: any) {
+    console.error('Refresh token error:', error);
+    return res.status(500).json({ message: 'Server error during token refresh' });
   }
 });
 

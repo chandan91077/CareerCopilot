@@ -31,7 +31,23 @@ export default function Login() {
     try {
       const response = await api.post('/auth/login', { email, password });
       localStorage.setItem('token', response.data.token);
+      if (response.data.refreshToken) {
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+      }
       localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      if ((window as any).electronAPI?.setStoredAuth) {
+        try {
+          await (window as any).electronAPI.setStoredAuth({
+            token: response.data.token,
+            refreshToken: response.data.refreshToken,
+            user: response.data.user,
+          });
+        } catch (e) {
+          console.warn('[LOGIN] Could not persist auth to desktop storage:', e);
+        }
+      }
+
       const isElectron = !!(window as any).electronAPI;
       if (isElectron) {
         navigate('/assistant');

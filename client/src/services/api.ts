@@ -25,13 +25,54 @@ api.interceptors.request.use(
   }
 );
 
-// Global response interceptor for 401 Unauthorized handling
+// Global response interceptor for 401 Unauthorized handling with silent refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response && error.response.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (refreshToken) {
+        try {
+          const res = await axios.post(`${apiBaseUrl}/auth/refresh`, { refreshToken });
+          const { token: newToken, refreshToken: newRefreshToken, user } = res.data;
+
+          localStorage.setItem('token', newToken);
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
+          if (user) {
+            localStorage.setItem('user', JSON.stringify(user));
+          }
+
+          // Also synchronize with desktop persistent storage if running in Electron
+          if (typeof window !== 'undefined' && (window as any).electronAPI?.setStoredAuth) {
+            (window as any).electronAPI.setStoredAuth({
+              token: newToken,
+              refreshToken: newRefreshToken || refreshToken,
+              user,
+            }).catch(console.error);
+          }
+
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        } catch (refreshErr) {
+          console.warn('[AUTH] Silent refresh failed:', refreshErr);
+        }
+      }
+
+      // If no refresh token or refresh failed, clear session and redirect to login
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
+
+      if (typeof window !== 'undefined' && (window as any).electronAPI?.clearStoredAuth) {
+        (window as any).electronAPI.clearStoredAuth().catch(console.error);
+      }
+
       if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
         window.location.href = '/login';
       }

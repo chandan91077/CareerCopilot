@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, globalShortcut, desktopCapturer, session, screen, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -8,6 +8,63 @@ let mainWindow;
 let tray;
 let localPort;
 let localServer;
+let isQuitting = false;
+
+// ─── Single Instance Lock ──────────────────────────────────────────
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log('[APP] Another instance is already running. Quitting.');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
+// ─── Persistent Auth Session File in userData ──────────────────────
+const authStorageFile = path.join(app.getPath('userData'), 'auth-session.json');
+
+function getStoredAuthData() {
+  try {
+    if (fs.existsSync(authStorageFile)) {
+      const data = fs.readFileSync(authStorageFile, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error('[AUTH STORAGE] Error reading auth data:', err.message);
+  }
+  return null;
+}
+
+function setStoredAuthData(authData) {
+  try {
+    const dir = path.dirname(authStorageFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(authStorageFile, JSON.stringify(authData, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('[AUTH STORAGE] Error writing auth data:', err.message);
+    return false;
+  }
+}
+
+function clearStoredAuthData() {
+  try {
+    if (fs.existsSync(authStorageFile)) {
+      fs.unlinkSync(authStorageFile);
+    }
+    return true;
+  } catch (err) {
+    console.error('[AUTH STORAGE] Error clearing auth data:', err.message);
+    return false;
+  }
+}
 
 const mime = {
   '.html': 'text/html',
@@ -45,11 +102,14 @@ function setupPermissions() {
   // Native getDisplayMedia handler for Electron 16+
   if (typeof session.defaultSession.setDisplayMediaRequestHandler === 'function') {
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-      desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+      // Prioritize full screen sources so DWM desktop compositor captures all overlays & virtual windows
+      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
         if (sources.length > 0) {
           callback({ video: sources[0] });
         } else {
-          callback({});
+          desktopCapturer.getSources({ types: ['screen', 'window'] }).then((allSources) => {
+            callback({ video: allSources[0] || null });
+          }).catch(() => callback({}));
         }
       }).catch((err) => {
         console.error('[DISPLAY CAPTURE] Error getting sources:', err);
@@ -73,7 +133,9 @@ function setupPermissions() {
   });
 }
 
-// ─── Local static file server for packaged build ───────────────────
+// ─── Local static file server for packaged build (deterministic port) ─
+const PREFERRED_LOCAL_PORT = 58291;
+
 function startLocalServer(callback) {
   localServer = http.createServer((req, res) => {
     let reqUrl = req.url.split('?')[0];
@@ -101,18 +163,37 @@ function startLocalServer(callback) {
     });
   });
 
-  localServer.listen(0, '127.0.0.1', () => {
-    localPort = localServer.address().port;
-    console.log('[SERVER] Packaged static assets serving on port:', localPort);
-    callback(localPort);
-  });
+  const tryListen = (port) => {
+    localServer.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`[SERVER] Port ${port} in use, trying port ${port + 1}...`);
+        tryListen(port + 1);
+      } else {
+        console.error('[SERVER] Server error:', err);
+      }
+    });
+
+    localServer.listen(port, '127.0.0.1', () => {
+      localPort = localServer.address().port;
+      console.log('[SERVER] Packaged static assets serving on consistent port:', localPort);
+      callback(localPort);
+    });
+  };
+
+  tryListen(PREFERRED_LOCAL_PORT);
 }
 
-// ─── Screen capture: grab any screen source ───────────────────────
+// ─── Screen capture: grab active screen with display scale ──────────
 async function captureActiveScreenBase64() {
+  const primaryDisplay = screen ? screen.getPrimaryDisplay() : null;
+  const bounds = primaryDisplay ? primaryDisplay.bounds : { width: 1920, height: 1080 };
+  const scale = (primaryDisplay && primaryDisplay.scaleFactor) ? primaryDisplay.scaleFactor : 1;
+  const width = Math.round(bounds.width * scale);
+  const height = Math.round(bounds.height * scale);
+
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: { width: 1920, height: 1080 }
+    thumbnailSize: { width, height }
   });
 
   if (sources.length > 0) {
@@ -307,6 +388,29 @@ function createWindow() {
     console.log('[MEDIA] Audio playback started');
   });
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      // External WM_CLOSE or accidental window close: confirm with user or keep running in tray
+      const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'question',
+        buttons: ['Keep Running in Background', 'Quit CareerCopilot'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'CareerCopilot - Confirmation',
+        message: 'A close request was received. Do you want to exit CareerCopilot?',
+        detail: 'Click "Keep Running in Background" to keep the assistant active in tray and via hotkeys.'
+      });
+
+      if (choice === 1) {
+        isQuitting = true;
+        app.quit();
+      } else {
+        mainWindow.hide();
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -389,8 +493,35 @@ app.whenReady().then(() => {
       const iconPath = path.join(__dirname, 'assets', 'icon.ico');
       tray = new Tray(iconPath);
       const contextMenu = Menu.buildFromTemplate([
-        { label: 'Show Assistant', click: () => { if (mainWindow) mainWindow.show(); else createWindow(); } },
-        { label: 'Quit', click: () => app.quit() }
+        {
+          label: 'Show Assistant',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.show();
+              mainWindow.focus();
+            } else {
+              createWindow();
+            }
+          }
+        },
+        {
+          label: 'Quit CareerCopilot',
+          click: () => {
+            const choice = dialog.showMessageBoxSync(mainWindow || null, {
+              type: 'question',
+              buttons: ['Cancel', 'Quit CareerCopilot'],
+              defaultId: 0,
+              cancelId: 0,
+              title: 'CareerCopilot',
+              message: 'Are you sure you want to quit CareerCopilot?',
+              detail: 'The interview assistant will stop running.'
+            });
+            if (choice === 1) {
+              isQuitting = true;
+              app.quit();
+            }
+          }
+        }
       ]);
       tray.setToolTip('CareerCopilot Interview Assistant Active');
       tray.setContextMenu(contextMenu);
@@ -434,18 +565,39 @@ app.whenReady().then(() => {
     console.log('[IPC] Synced history index:', state.currentIndex);
   });
 
-  // ─── Get available media sources for system audio capture ────
+  // ─── Get available media sources for system audio / screen capture ────
   ipcMain.handle('get-screen-sources', async () => {
     try {
       const sources = await desktopCapturer.getSources({
-        types: ['screen','window'],
+        types: ['screen', 'window'],
         thumbnailSize: { width: 0, height: 0 }
+      });
+      // Prioritize full screen sources so DWM desktop compositor captures all overlays & virtual windows
+      sources.sort((a, b) => {
+        const aIsScreen = a.id.startsWith('screen:');
+        const bIsScreen = b.id.startsWith('screen:');
+        if (aIsScreen && !bIsScreen) return -1;
+        if (!aIsScreen && bIsScreen) return 1;
+        return 0;
       });
       return sources.map(s => ({ id: s.id, name: s.name }));
     } catch (err) {
       console.error('[IPC] get-screen-sources failed:', err);
       return [];
     }
+  });
+
+  // ─── Persistent Auth Session Handlers ────────────────────────
+  ipcMain.handle('get-stored-auth', () => {
+    return getStoredAuthData();
+  });
+
+  ipcMain.handle('set-stored-auth', (event, authData) => {
+    return setStoredAuthData(authData);
+  });
+
+  ipcMain.handle('clear-stored-auth', () => {
+    return clearStoredAuthData();
   });
 
   // ─── Mic/speaker diagnostic ping ─────────────────────────────
@@ -499,6 +651,25 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    const choice = dialog.showMessageBoxSync(mainWindow || null, {
+      type: 'question',
+      buttons: ['Keep Running in Background', 'Quit CareerCopilot'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'CareerCopilot - Confirmation',
+      message: 'A quit signal was received. Are you sure you want to quit CareerCopilot?',
+      detail: 'Choose "Keep Running in Background" to keep the assistant active.'
+    });
+    if (choice === 1) {
+      isQuitting = true;
+      app.quit();
+    }
+  }
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (localServer) {
@@ -507,5 +678,7 @@ app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (isQuitting && process.platform !== 'darwin') {
+    app.quit();
+  }
 });
