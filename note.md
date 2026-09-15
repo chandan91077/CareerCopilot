@@ -218,9 +218,107 @@ Mouse coordinates are normalized as `(xRatio, yRatio)` ratios of the video eleme
 
 ---
 
+## 📸 6. How Screen Capture, Storage & AI Vision Analysis Work
 
+### Overview
+CareerCopilot includes an instant multimodal vision engine that allows candidates to take a snapshot of their screen (such as a LeetCode problem, online assessment MCQ, or system design diagram) and receive step-by-step hints and working solution code tailored to their resume.
 
-### Q1: What problem, and who exactly has it?
+---
+
+### Step 1: How the Image is Captured
+
+1. **Triggering the Snapshot**:
+   - **Global Keyboard Shortcut**: Pressing <kbd>Ctrl</kbd> + <kbd>Enter</kbd> (or <kbd>Cmd</kbd> + <kbd>Enter</kbd> on macOS). Electron registers this globally using `globalShortcut.register('CommandOrControl+Enter', ...)`.
+   - **UI Camera Button**: Clicking the **"Capture"** button in the overlay top bar, which triggers `electronAPI.triggerScreenCapture()` via IPC from the renderer to the main process.
+
+2. **Native Screen Capture in `desktop/main.js` (`captureActiveScreenBase64`)**:
+   - Electron queries `screen.getPrimaryDisplay()` to determine the exact screen width, height, and display DPI scaling factor:
+     ```javascript
+     const width = Math.round(bounds.width * scale);
+     const height = Math.round(bounds.height * scale);
+     ```
+   - It invokes Electron’s native `desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } })` to grab the primary monitor frame.
+   - The thumbnail is converted to a PNG buffer via `sources[0].thumbnail.toPNG()`, and then encoded into a **Base64 string** (`pngBuffer.toString('base64')`).
+   - Electron emits the Base64 image directly to the React overlay window through IPC:
+     ```javascript
+     mainWindow.webContents.send('screen-captured', base64Image);
+     ```
+
+3. **Stealth & Self-Exclusion (Content Protection)**:
+   - The floating assistant overlay uses Win32 API `SetWindowDisplayAffinity(hwnd, 0x00000011)` (`WDA_EXCLUDEFROMCAPTURE`) and `win.setContentProtection(true)`.
+   - This ensures the CareerCopilot overlay itself is **completely invisible to screenshots and screen shares**, capturing only the underlying coding environment or browser.
+
+---
+
+### Step 2: Does It Store the Image Anywhere? (Storage Lifecycle)
+
+- **Local Disk (Ephemeral Debug File only)**:
+  - During capture, `main.js` writes a temporary copy to the operating system's temp folder:
+    ```javascript
+    path.join(app.getPath('temp'), 'last-capture-debug.png')
+    ```
+    *(On Windows: `%TEMP%\last-capture-debug.png`)*.
+  - This file exists only for local debugging and is overwritten on every subsequent capture.
+- **Client Frontend Memory (React State)**:
+  - In `client/src/pages/AssistantOverlay.tsx`, the Base64 string is held in component memory (`capturedScreen` state) while the user decides to type an instruction or press Enter.
+  - As soon as the user submits or clears the capture, this state is set back to `null`.
+- **Backend / Database Storage**:
+  - **Zero persistence.** The image is never saved to the server's disk, filesystem, or database (no MongoDB or cloud bucket storage like S3). It is processed in-memory as an HTTP POST payload and immediately passed to the AI vision endpoint.
+
+---
+
+### Step 3: How the Image is Sent to the API for the Answer
+
+1. **Frontend Request Dispatch (`AssistantOverlay.tsx` → `sendScreenAnalysis`)**:
+   - The client packages the Base64 image and any optional user prompt (e.g., *"code in java"*) into a JSON payload:
+     ```http
+     POST /api/assistant/analyze-screen
+     Content-Type: application/json
+     Authorization: Bearer <token>
+
+     {
+       "image": "<base64_string>",
+       "userInstruction": "solve in Python using dynamic programming"
+     }
+     ```
+
+2. **Backend Route Processing (`server/src/routes/assistant.routes.ts`)**:
+   - Extracts `image` and `userInstruction` from `req.body`.
+   - Queries MongoDB for the candidate's latest parsed resume (`Resume.findOne({ user: req.user?.id })`) to inject candidate-specific context.
+   - Passes the image, resume text, and instruction to `OpenAIService.analyzeScreen(...)`.
+
+3. **Multimodal LLM Processing (`server/src/services/openai.service.ts`)**:
+   - Cleans the Base64 string and embeds it as a data URI: `data:image/png;base64,${cleanBase64}`.
+   - Constructs a multimodal payload sent to vision-capable models:
+     ```javascript
+     messages: [
+       { role: 'system', content: 'You are an expert real-time technical interview companion analyzing a live screen capture image...' },
+       {
+         role: 'user',
+         content: [
+           { type: 'text', text: `Candidate's Resume:\n${resumeText}\n\nUSER TYPED INSTRUCTION: "${userInstruction}"` },
+           { type: 'image_url', image_url: { url: `data:image/png;base64,${cleanBase64}` } }
+         ]
+       }
+     ]
+     ```
+   - **Model Chain**: Primary vision models are `gpt-4o-mini` and `gpt-4o`, with automatic fallback to Groq Vision models (`llama-3.2-11b-vision-preview`, `llama-3.2-90b-vision-preview`).
+   - **Enforced JSON Output**:
+     ```json
+     {
+       "questionDetected": "Exact problem name or topic visible on screen",
+       "hint": "Step-by-step logic, optimal approach, Time/Space Complexity O(...)",
+       "codeSnippet": "Complete working solution code for the visible problem"
+     }
+     ```
+
+4. **Overlay Rendering**:
+   - The backend returns `{ success: true, analysis }` to the overlay.
+   - The client calls `pushQA(...)`, rendering a card in the overlay containing the detected question title, formatted explanation, and syntax-highlighted code with a one-click copy button.
+
+---
+
+## ❓ 7. Hackathon Judge Q&A / FAQs
 **Target Audience**: Software engineering job candidates and computer science students taking live technical interviews, system design rounds, and online coding assessments.
 **The Problem**: High-pressure technical interviews require recalling complex data structures, algorithms, SQL syntax, and system design patterns under intense time pressure while speaking.
 
@@ -248,7 +346,7 @@ If you remove the AI:
 
 ---
 
-## 📊 7. Rubric Alignment
+## 📊 8. Rubric Alignment
 
 ### Hackathon Constraints Satisfied
 1. **Two models / modalities**: Speech (Whisper audio) + Vision (Screen capture analysis) + Text (Llama-3.3-70B).
@@ -263,7 +361,7 @@ If you remove the AI:
 
 ---
 
-## 📦 8. How to Run & Download the App
+## 📦 9. How to Run & Download the App
 
 1. **Web Dashboard**: Run `npm run dev` in `client/` and `server/`.
 2. **Direct Windows (.exe) Download**: Click **Download Windows App (.exe)** on the Dashboard or visit `/api/download/desktop`.
@@ -273,3 +371,4 @@ If you remove the AI:
    npm run dist
    ```
    Generates `release/InterviewAISetup.exe`.
+

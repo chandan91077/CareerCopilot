@@ -118,20 +118,59 @@ export function useScreenShare() {
         }
 
         if (sourceIdToUse) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceIdToUse,
-                minWidth: 1280,
-                maxWidth: 3840,
-                minHeight: 720,
-                maxHeight: 2160,
-                maxFrameRate: 30,
-              },
-            } as any,
-          });
+          // Query dynamic screen dimensions & DPI scaling
+          let captureWidth = 1920;
+          let captureHeight = 1080;
+
+          if ((window as any).electronAPI?.getScreenResolution) {
+            try {
+              const res = await (window as any).electronAPI.getScreenResolution(sourceIdToUse);
+              if (res && res.physicalWidth && res.physicalHeight) {
+                captureWidth = res.physicalWidth;
+                captureHeight = res.physicalHeight;
+              } else if (res && res.width && res.height) {
+                captureWidth = res.width;
+                captureHeight = res.height;
+              }
+            } catch (e) {
+              console.warn('[SCREEN-SHARE] Failed to query screen resolution:', e);
+            }
+          } else {
+            const dpr = window.devicePixelRatio || 1;
+            captureWidth = Math.round((window.screen?.width || 1920) * dpr);
+            captureHeight = Math.round((window.screen?.height || 1080) * dpr);
+          }
+
+          console.log(`[SCREEN-SHARE] Requesting dynamic capture: max ${captureWidth}x${captureHeight}`);
+
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: sourceIdToUse,
+                  minWidth: 0,
+                  maxWidth: captureWidth,
+                  minHeight: 0,
+                  maxHeight: captureHeight,
+                  maxFrameRate: 30,
+                },
+              } as any,
+            });
+          } catch (firstErr: any) {
+            console.warn('[SCREEN-SHARE] Initial capture with max bounds failed, retrying with flexible constraints:', firstErr);
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: sourceIdToUse,
+                  maxFrameRate: 30,
+                },
+              } as any,
+            });
+          }
         } else {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: { cursor: 'always' } as any,

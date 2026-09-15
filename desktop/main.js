@@ -226,18 +226,37 @@ function startLocalServer(callback) {
 
 // ─── Screen capture: grab active screen with display scale ──────────
 async function captureActiveScreenBase64() {
-  const primaryDisplay = screen ? screen.getPrimaryDisplay() : null;
-  const bounds = primaryDisplay ? primaryDisplay.bounds : { width: 1920, height: 1080 };
-  const scale = (primaryDisplay && primaryDisplay.scaleFactor) ? primaryDisplay.scaleFactor : 1;
+  let targetDisplay = screen ? screen.getPrimaryDisplay() : null;
+  if (mainWindow && screen && !mainWindow.isDestroyed()) {
+    try {
+      const winBounds = mainWindow.getBounds();
+      targetDisplay = screen.getDisplayNearestPoint({
+        x: winBounds.x + Math.round(winBounds.width / 2),
+        y: winBounds.y + Math.round(winBounds.height / 2)
+      }) || targetDisplay;
+    } catch (e) {
+      // fallback to primary
+    }
+  }
+
+  const bounds = targetDisplay ? targetDisplay.bounds : { width: 1920, height: 1080 };
+  const scale = (targetDisplay && targetDisplay.scaleFactor) ? targetDisplay.scaleFactor : 1;
   const width = Math.round(bounds.width * scale);
   const height = Math.round(bounds.height * scale);
 
-  const sources = await desktopCapturer.getSources({
+  let sources = await desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width, height }
   });
 
-  if (sources.length > 0) {
+  if (!sources || sources.length === 0) {
+    sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width, height }
+    });
+  }
+
+  if (sources && sources.length > 0) {
     const pngBuffer = sources[0].thumbnail.toPNG();
     try {
       const debugPath = path.join(app.getPath('temp'), 'last-capture-debug.png');
@@ -326,7 +345,8 @@ function applyWin32ContentProtection(win) {
 
 // ─── Re-assert Always-on-Top and Virtual Desktop Pinning ────────────
 function reassertAlwaysOnTopAndWorkspace(win, reason = 'unknown') {
-  if (!win || win.isDestroyed()) return;
+  // Never reassert or show a window that is destroyed or deliberately hidden
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
 
   try {
     // 1. Electron level: Set to 'screen-saver' (highest Z-order level) with relative level 1
@@ -342,13 +362,13 @@ function reassertAlwaysOnTopAndWorkspace(win, reason = 'unknown') {
 
     // 4. Native Win32 SetWindowPos HWND_TOPMOST reinforcement:
     // HWND_TOPMOST = -1
-    // SWP_NOSIZE (0x0001) | SWP_NOMOVE (0x0002) | SWP_NOACTIVATE (0x0010) | SWP_SHOWWINDOW (0x0040) = 0x0053
-    // Crucial: SWP_NOACTIVATE keeps it on top WITHOUT stealing focus or keyboard input from active apps
+    // SWP_NOSIZE (0x0001) | SWP_NOMOVE (0x0002) | SWP_NOACTIVATE (0x0010) = 0x0013
+    // Crucial: Do NOT use SWP_SHOWWINDOW (0x0040) as it forces visibility and causes flicker on toggle
     if (SetWindowPos && process.platform === 'win32') {
       const handleBuf = win.getNativeWindowHandle();
       if (handleBuf && handleBuf.length >= 8) {
         const hwnd = handleBuf.readBigUInt64LE(0);
-        SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0053);
+        SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0013);
       }
     }
 
@@ -421,19 +441,23 @@ function createWindow() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         const memMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
         writeLifecycleLog('HEARTBEAT', `PID: ${process.pid} | Mem: ${memMb}MB | Visible: ${mainWindow.isVisible()} | Minimized: ${mainWindow.isMinimized()} | Focused: ${mainWindow.isFocused()} | Bounds: ${JSON.stringify(mainWindow.getBounds())}`);
-        reassertAlwaysOnTopAndWorkspace(mainWindow, 'heartbeat-interval');
+        if (mainWindow.isVisible()) {
+          reassertAlwaysOnTopAndWorkspace(mainWindow, 'heartbeat-interval');
+        }
       }
     }, 2500);
   });
 
   // ── Window Focus & Blur Listeners ──────────────────────────
   mainWindow.on('blur', () => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     writeLifecycleLog('INFO', '[WINDOW] blur: another app took focus. Re-asserting topmost and workspace.');
     // Reclaim top position immediately without stealing focus from the newly active window
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-blur');
   });
 
   mainWindow.on('focus', () => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     writeLifecycleLog('INFO', '[WINDOW] focus event received');
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-focus');
   });
@@ -500,14 +524,22 @@ function createWindow() {
 }
 
 // ─── Global keyboard shortcuts ────────────────────────────────────
+let lastToggleShortcutTime = 0;
+
 function registerShortcuts() {
   // 1. Toggle overlay visibility (Ctrl + /)
+  globalShortcut.unregister('CommandOrControl+/');
   globalShortcut.register('CommandOrControl+/', () => {
-    if (!mainWindow) return;
+    const now = Date.now();
+    if (now - lastToggleShortcutTime < 300) return; // Prevent double-trigger / key repeat
+    lastToggleShortcutTime = now;
+
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
       mainWindow.show();
+      mainWindow.focus();
     }
   });
 
@@ -655,6 +687,9 @@ app.whenReady().then(() => {
         types: ['screen', 'window'],
         thumbnailSize: { width: 0, height: 0 }
       });
+      const displays = screen ? screen.getAllDisplays() : [];
+      const primaryDisplay = screen ? screen.getPrimaryDisplay() : null;
+
       // Prioritize full screen sources so DWM desktop compositor captures all overlays & virtual windows
       sources.sort((a, b) => {
         const aIsScreen = a.id.startsWith('screen:');
@@ -663,10 +698,72 @@ app.whenReady().then(() => {
         if (!aIsScreen && bIsScreen) return 1;
         return 0;
       });
-      return sources.map(s => ({ id: s.id, name: s.name }));
+
+      return sources.map(s => {
+        let matchedDisplay = primaryDisplay;
+        if (s.id.startsWith('screen:')) {
+          const parts = s.id.split(':');
+          if (parts.length >= 2) {
+            const disp = displays.find(d => String(d.id) === parts[1]);
+            if (disp) matchedDisplay = disp;
+          }
+        }
+        const bounds = matchedDisplay ? matchedDisplay.bounds : { width: 1920, height: 1080 };
+        const scale = (matchedDisplay && matchedDisplay.scaleFactor) ? matchedDisplay.scaleFactor : 1;
+
+        return {
+          id: s.id,
+          name: s.name,
+          width: bounds.width,
+          height: bounds.height,
+          scaleFactor: scale,
+          physicalWidth: Math.round(bounds.width * scale),
+          physicalHeight: Math.round(bounds.height * scale),
+        };
+      });
     } catch (err) {
       console.error('[IPC] get-screen-sources failed:', err);
       return [];
+    }
+  });
+
+  // ─── Query dynamic screen resolution and DPI scale factor ────────────
+  ipcMain.handle('get-screen-resolution', (event, sourceId) => {
+    try {
+      const displays = screen ? screen.getAllDisplays() : [];
+      const primary = screen ? screen.getPrimaryDisplay() : null;
+      let matchedDisplay = primary;
+
+      if (sourceId && typeof sourceId === 'string') {
+        const parts = sourceId.split(':');
+        if (parts.length >= 2) {
+          const displayIdStr = parts[1];
+          const found = displays.find(d => String(d.id) === displayIdStr);
+          if (found) matchedDisplay = found;
+        }
+      }
+
+      const bounds = matchedDisplay ? matchedDisplay.bounds : { width: 1920, height: 1080 };
+      const scale = (matchedDisplay && matchedDisplay.scaleFactor) ? matchedDisplay.scaleFactor : 1;
+      const physicalWidth = Math.round(bounds.width * scale);
+      const physicalHeight = Math.round(bounds.height * scale);
+
+      return {
+        width: bounds.width,
+        height: bounds.height,
+        scaleFactor: scale,
+        physicalWidth,
+        physicalHeight,
+      };
+    } catch (err) {
+      console.error('[IPC] get-screen-resolution failed:', err);
+      return {
+        width: 1920,
+        height: 1080,
+        scaleFactor: 1,
+        physicalWidth: 1920,
+        physicalHeight: 1080,
+      };
     }
   });
 
@@ -693,8 +790,11 @@ app.whenReady().then(() => {
     if (process.platform !== 'win32' || !SetCursorPos || !mouse_event) return;
 
     try {
-      const screenW = GetSystemMetrics ? GetSystemMetrics(0) : 1920;
-      const screenH = GetSystemMetrics ? GetSystemMetrics(1) : 1080;
+      const primaryDisplay = screen ? screen.getPrimaryDisplay() : null;
+      const defaultW = primaryDisplay ? Math.round(primaryDisplay.bounds.width * (primaryDisplay.scaleFactor || 1)) : 1920;
+      const defaultH = primaryDisplay ? Math.round(primaryDisplay.bounds.height * (primaryDisplay.scaleFactor || 1)) : 1080;
+      const screenW = GetSystemMetrics ? GetSystemMetrics(0) : defaultW;
+      const screenH = GetSystemMetrics ? GetSystemMetrics(1) : defaultH;
 
       if (typeof input.xRatio === 'number' && typeof input.yRatio === 'number') {
         const targetX = Math.round(input.xRatio * screenW);

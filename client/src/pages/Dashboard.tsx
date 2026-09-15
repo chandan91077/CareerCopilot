@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api, { getApiUrl } from '../services/api';
+import api, { getApiUrl, getDesktopDownloadUrl } from '../services/api';
 import { 
   Upload, FileText, CheckCircle2, AlertTriangle, Lightbulb, 
   Loader2, Download, Sparkles
@@ -133,11 +133,11 @@ export default function Dashboard() {
               <div className="flex flex-col gap-2 mt-1">
                 <span className="text-xs font-semibold text-indigo-100">Active Tier: <span className="uppercase text-white font-bold bg-white/20 px-2 py-0.5 rounded ml-1 border border-white/10">{currentPlan}</span></span>
                 <a 
-                  href={getApiUrl('/api/download/desktop')}
+                  href={getDesktopDownloadUrl()}
                   download="CareerCopilotSetup.exe"
                   className="w-fit px-4 py-2 mt-2 bg-white text-indigo-700 hover:bg-indigo-50 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer no-underline"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : ''}
+                  <Download className="w-3.5 h-3.5" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : '(73.7 MB)'}
                 </a>
               </div>
             </div>

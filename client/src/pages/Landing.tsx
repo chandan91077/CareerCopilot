@@ -5,7 +5,7 @@ import {
   Mic, Play, Layout, Download, Keyboard, Lock, HelpCircle,
   Monitor, Cpu, CheckCircle2, Zap, Layers, RefreshCw
 } from 'lucide-react';
-import { getApiUrl } from '../services/api';
+import { getApiUrl, getDesktopDownloadUrl } from '../services/api';
 
 export default function Landing() {
   const [desktopMeta, setDesktopMeta] = useState<any>(null);
@@ -305,14 +305,14 @@ export default function Landing() {
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
-              href={getApiUrl('/api/download/desktop')}
+              href={getDesktopDownloadUrl()}
               download="CareerCopilotSetup.exe"
               className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
             >
-              <Download className="w-4 h-4" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : ''}
+              <Download className="w-4 h-4" /> Download Windows App (.exe) {desktopMeta?.sizeMB ? `(${desktopMeta.sizeMB} MB)` : '(73.7 MB)'}
             </a>
             <span className="text-[10px] text-zinc-500 font-mono">
-              Windows 10/11 x64 {desktopMeta?.version ? `• v${desktopMeta.version}` : ''}
+              Windows 10/11 x64 {desktopMeta?.version ? `• v${desktopMeta.version}` : '• v1.0.0'}
             </span>
           </div>
         </div>

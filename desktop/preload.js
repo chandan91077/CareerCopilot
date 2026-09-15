@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Get desktop/window sources for system audio (loopback) ──────
   getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
 
+  // ── Query dynamic screen resolution and DPI metrics ──────────────
+  getScreenResolution: (sourceId) => ipcRenderer.invoke('get-screen-resolution', sourceId),
+
   // ── History sync ─────────────────────────────────────────────────
   syncHistoryState: (state) => ipcRenderer.invoke('sync-history-state', state),
 

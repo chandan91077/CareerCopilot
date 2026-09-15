@@ -90,4 +90,13 @@ export function getApiUrl(path: string): string {
   return `${apiBaseUrl}${cleanPath}`;
 }
 
+// ── Single Source of Truth for Desktop Installer Download ────────────
+export const DEFAULT_DESKTOP_DOWNLOAD_URL = 
+  import.meta.env.VITE_DESKTOP_DOWNLOAD_URL || 
+  'https://github.com/chandan91077/CareerCopilot/releases/latest/download/CareerCopilotSetup.exe';
+
+export function getDesktopDownloadUrl(): string {
+  return DEFAULT_DESKTOP_DOWNLOAD_URL;
+}
+
 export default api;

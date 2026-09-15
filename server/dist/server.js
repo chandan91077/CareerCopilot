@@ -111,7 +111,8 @@ app.get('/api/download/desktop', (req, res) => {
             return res.download(exePath, 'CareerCopilotSetup.exe');
         }
     }
-    return res.redirect('https://github.com/chandan91077/CareerCopilot/releases/latest');
+    const fallbackDownloadUrl = process.env.DESKTOP_DOWNLOAD_URL || 'https://github.com/chandan91077/CareerCopilot/releases/latest/download/CareerCopilotSetup.exe';
+    return res.redirect(fallbackDownloadUrl);
 });
 // Root Endpoint
 app.get('/', (req, res) => {
