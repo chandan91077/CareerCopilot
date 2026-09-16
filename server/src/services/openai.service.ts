@@ -102,7 +102,19 @@ async function createChatCompletionWithFallback(
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI-Fallback] Attempting model: ${modelName}`);
-      const res = await ai.client.chat.completions.create({ ...payload, model: modelName });
+      let res: any;
+      try {
+        res = await ai.client.chat.completions.create({ ...payload, model: modelName });
+      } catch (firstErr: any) {
+        if (payload.response_format && (firstErr?.status === 400 || firstErr?.statusCode === 400) &&
+            (firstErr?.message?.includes('response_format') || firstErr?.message?.includes('json_object'))) {
+          console.warn(`[AI-Fallback] Model "${modelName}" does not support response_format: json_object. Retrying without response_format...`);
+          const { response_format, ...strippedPayload } = payload;
+          res = await ai.client.chat.completions.create({ ...strippedPayload, model: modelName });
+        } else {
+          throw firstErr;
+        }
+      }
       console.log(`[AI-Fallback] ✅ Success with model: ${modelName}`);
       if (attemptLogs) {
         attemptLogs.push({
@@ -219,7 +231,7 @@ async function getSystemPrompt(key: keyof typeof DEFAULT_PROMPTS): Promise<strin
 }
 
 interface VisionClientOption {
-  provider: 'openai' | 'groq';
+  provider: 'openai' | 'gemini' | 'groq';
   client: OpenAI;
   models: string[];
 }
@@ -227,6 +239,7 @@ interface VisionClientOption {
 function getVisionClientOptions(): VisionClientOption[] {
   const options: VisionClientOption[] = [];
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const geminiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBxwvAOhDBlXJfapl9wX3QTg_xYdQg5csI')?.trim();
   const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
 
   // Priority 1: OpenAI (gpt-4o flagship, with gpt-4o-mini as immediate reliable fallback)
@@ -238,12 +251,24 @@ function getVisionClientOptions(): VisionClientOption[] {
     });
   }
 
-  // Priority 2: Groq Vision (fallback)
+  // Priority 2: Gemini Vision (Google AI Studio OpenAI-compatible endpoint: ultra-fast, high-resolution OCR)
+  if (geminiKey && geminiKey.length > 0) {
+    options.push({
+      provider: 'gemini',
+      client: new OpenAI({
+        apiKey: geminiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/'
+      }),
+      models: ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
+    });
+  }
+
+  // Priority 3: Groq (active models from live Groq catalog)
   if (groqKey && groqKey.length > 0) {
     options.push({
       provider: 'groq',
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      models: ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
+      models: ['qwen/qwen3.8-27b', 'groq/compound']
     });
   }
 
@@ -495,31 +520,12 @@ Output strictly valid JSON matching this schema:
   "codeSnippet": "Complete working solution code for the VISIBLE problem, or empty string if not a coding problem"
 }`;
 
-    const userContent: any[] = [
-      {
-        type: 'text',
-        text: `${instructionPrompt}\n\n[Candidate Resume Context for style/background]:\n${resumeText ? resumeText.slice(0, 1000) : 'Standard software engineering profile'}`
-      },
-      {
-        type: 'image_url',
-        image_url: {
-          url: `data:image/png;base64,${cleanBase64}`,
-          detail: 'high' // Instructs vision model to inspect full-resolution 512x512 tiles for crisp code & text OCR
-        }
-      }
-    ];
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userContent }
-    ];
-
-    console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Dispatching high-accuracy vision analysis. detail=high, max_tokens=4096. Providers available: ${visionOptions.map(o => o.provider).join(', ')}`);
+    console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Dispatching high-accuracy vision analysis. Providers available: ${visionOptions.map(o => o.provider).join(', ')}`);
 
     let lastError: any;
     const attemptLogs: any[] = [];
 
-    // Cross-provider fallback: try OpenAI (gpt-4o) first, fallback to Groq Vision if needed
+    // Cross-provider fallback: try OpenAI first, fallback to Gemini, then Groq
     for (const option of visionOptions) {
       console.log(`[AI-Vision] Attempting vision provider "${option.provider}" with models: ${option.models.join(', ')}`);
       try {
@@ -528,6 +534,31 @@ Output strictly valid JSON matching this schema:
           model: option.models[0],
           visionModel: option.models[0]
         };
+
+        const imageUrlPayload: any = {
+          url: `data:image/png;base64,${cleanBase64}`
+        };
+        // OpenAI detail='high' enables 512x512 multi-tile OCR; other providers expect standard image_url
+        if (option.provider === 'openai') {
+          imageUrlPayload.detail = 'high';
+        }
+
+        const messages = [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `${instructionPrompt}\n\n[Candidate Resume Context for style/background]:\n${resumeText ? resumeText.slice(0, 1000) : 'Standard software engineering profile'}`
+              },
+              {
+                type: 'image_url',
+                image_url: imageUrlPayload
+              }
+            ]
+          }
+        ];
 
         const response = await createChatCompletionWithFallback(
           dummyConfig,
