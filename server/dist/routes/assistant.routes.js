@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const multer_1 = __importDefault(require("multer"));
+const openai_1 = __importDefault(require("openai"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const openai_service_1 = require("../services/openai.service");
 const models_1 = require("../models");
@@ -25,6 +26,24 @@ if (!process.env.OPENAI_API_KEY) {
         '║  Add your key: OPENAI_API_KEY=sk-...                        ║\n' +
         '╚══════════════════════════════════════════════════════════════╝\n');
 }
+// GET /assistant/groq-models - List live active models from Groq
+router.get('/groq-models', async (req, res) => {
+    try {
+        const groqKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
+        if (!groqKey)
+            return res.json({ success: false, message: 'No GROQ_API_KEY found in server env' });
+        const client = new openai_1.default({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' });
+        const list = await client.models.list();
+        return res.json({
+            success: true,
+            count: list.data.length,
+            models: list.data.map((m) => ({ id: m.id, active: m.active }))
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
 // POST /assistant/analyze-screen - Analyze base64 image capture against user resume & optional typed instruction
 router.post('/analyze-screen', auth_middleware_1.optionalAuthMiddleware, async (req, res) => {
     const { image, userInstruction } = req.body;
