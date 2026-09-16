@@ -272,7 +272,9 @@ async function captureActiveScreenBase64() {
     try {
       const debugPath = path.join(app.getPath('temp'), 'last-capture-debug.png');
       fs.writeFileSync(debugPath, pngBuffer);
-      console.log('[CAPTURE DEBUG] Saved fresh screen capture (' + pngBuffer.length + ' bytes) for display ' + (targetDisplay?.id || 'primary') + ' to:', debugPath);
+      const timestampedPath = path.join(app.getPath('temp'), `capture-debug-${Date.now()}.png`);
+      fs.writeFileSync(timestampedPath, pngBuffer);
+      console.log('[CAPTURE DEBUG] Saved fresh screen capture (' + pngBuffer.length + ' bytes) for display ' + (targetDisplay?.id || 'primary') + ' to:', debugPath, 'and', timestampedPath);
     } catch (e) {
       console.warn('[CAPTURE DEBUG] Could not write debug image file:', e.message);
     }

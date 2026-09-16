@@ -6,6 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_PROMPTS = exports.OpenAIService = void 0;
 const openai_1 = __importDefault(require("openai"));
 const models_1 = require("../models");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
 const GROQ_TEXT_FALLBACKS = [
     'llama-3.3-70b-versatile',
     'gemma2-9b-it',
@@ -64,7 +67,7 @@ const getOpenAIClient = () => {
     console.warn('[AI-KEY-CHECK] ⚠️ No valid OPENAI_API_KEY or GROQ_API_KEY found in process.env — falling back to deterministic mock service');
     return null;
 };
-async function createChatCompletionWithFallback(ai, payload, fallbackModels = GROQ_TEXT_FALLBACKS) {
+async function createChatCompletionWithFallback(ai, payload, fallbackModels = GROQ_TEXT_FALLBACKS, attemptLogs) {
     let modelsToTry;
     const isGroq = ai.client.baseURL?.includes('groq.com');
     if (fallbackModels !== GROQ_TEXT_FALLBACKS) {
@@ -84,6 +87,13 @@ async function createChatCompletionWithFallback(ai, payload, fallbackModels = GR
             console.log(`[AI-Fallback] Attempting model: ${modelName}`);
             const res = await ai.client.chat.completions.create({ ...payload, model: modelName });
             console.log(`[AI-Fallback] ✅ Success with model: ${modelName}`);
+            if (attemptLogs) {
+                attemptLogs.push({
+                    model: modelName,
+                    status: 'success',
+                    rawOutput: res.choices[0]?.message?.content
+                });
+            }
             return res;
         }
         catch (err) {
@@ -91,6 +101,15 @@ async function createChatCompletionWithFallback(ai, payload, fallbackModels = GR
             const status = err?.status || err?.statusCode || 'unknown';
             const msg = err?.message || String(err);
             console.warn(`[AI-Fallback] ❌ Model "${modelName}" failed (status: ${status}, message: ${msg}). Falling back to next model...`);
+            if (attemptLogs) {
+                attemptLogs.push({
+                    model: modelName,
+                    status: 'failed',
+                    statusCode: status,
+                    errorMessage: msg,
+                    errorBody: err?.error || err?.response?.data || null
+                });
+            }
         }
     }
     console.error('[AI-Fallback] ❌ All fallback models failed! Last raw error:', lastError?.message || lastError);
@@ -185,20 +204,20 @@ function getVisionClientOptions() {
     const options = [];
     const openaiKey = process.env.OPENAI_API_KEY?.trim();
     const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
-    // Priority 1: OpenAI (gpt-4o flagship provides highest accuracy for code OCR, geometry, dense text & math)
+    // Priority 1: OpenAI (gpt-4o flagship, with gpt-4o-mini as immediate reliable fallback)
     if (openaiKey && openaiKey.length > 0) {
         options.push({
             provider: 'openai',
             client: new openai_1.default({ apiKey: openaiKey }),
-            models: ['gpt-4o', 'gpt-4o-2024-08-06', 'chatgpt-4o-latest', 'gpt-4o-mini']
+            models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-08-06']
         });
     }
-    // Priority 2: Groq Vision (prioritize 90b over 11b for high accuracy)
+    // Priority 2: Groq Vision (fallback)
     if (groqKey && groqKey.length > 0) {
         options.push({
             provider: 'groq',
             client: new openai_1.default({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-            models: ['llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview']
+            models: ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
         });
     }
     return options;
@@ -369,12 +388,25 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
         const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '').trim();
         const imageByteLength = Math.round((cleanBase64.length * 3) / 4);
         console.log(`[AI-Vision] Analyzing screen capture: ${cleanBase64.length} base64 chars (~${imageByteLength} bytes). Instruction: "${userInstruction || 'none'}"`);
+        // Save screenshot to disk on every capture attempt for debugging/verification
+        let savedImagePath = '';
+        try {
+            const buffer = Buffer.from(cleanBase64, 'base64');
+            const filename = `capture-debug-${Date.now()}.png`;
+            savedImagePath = path_1.default.join(os_1.default.tmpdir(), filename);
+            fs_1.default.writeFileSync(savedImagePath, buffer);
+            console.log(`[AI-Vision] 💾 Saved capture image (${buffer.length} bytes) to disk: ${savedImagePath}`);
+        }
+        catch (saveErr) {
+            console.warn('[AI-Vision] Failed to save debug image to disk:', saveErr?.message);
+        }
         if (!cleanBase64 || imageByteLength < 1000) {
             console.warn('[AI-Vision] ⚠️ Screenshot payload is empty or too small, skipping vision request.');
             return {
                 questionDetected: "Screen Unclear",
                 hint: "The captured screenshot was empty or unreadable. Please ensure your window is visible and press Capture again.",
-                codeSnippet: ""
+                codeSnippet: "",
+                _savedDebugImage: savedImagePath
             };
         }
         const instructionPrompt = userInstruction && userInstruction.trim().length > 0
@@ -436,6 +468,7 @@ Output strictly valid JSON matching this schema:
         ];
         console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Dispatching high-accuracy vision analysis. detail=high, max_tokens=4096. Providers available: ${visionOptions.map(o => o.provider).join(', ')}`);
         let lastError;
+        const attemptLogs = [];
         // Cross-provider fallback: try OpenAI (gpt-4o) first, fallback to Groq Vision if needed
         for (const option of visionOptions) {
             console.log(`[AI-Vision] Attempting vision provider "${option.provider}" with models: ${option.models.join(', ')}`);
@@ -449,14 +482,44 @@ Output strictly valid JSON matching this schema:
                     messages,
                     response_format: { type: 'json_object' },
                     max_tokens: 4096
-                }, option.models);
+                }, option.models, attemptLogs);
                 const content = response.choices[0]?.message?.content || '{}';
-                const parsed = JSON.parse(content);
+                console.log(`[AI-Vision] 📄 RAW MODEL RESPONSE from provider "${option.provider}":\n`, content);
+                let parsed;
+                try {
+                    let cleanContent = content.trim();
+                    if (cleanContent.startsWith('```')) {
+                        cleanContent = cleanContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+                    }
+                    parsed = JSON.parse(cleanContent);
+                }
+                catch (jsonErr) {
+                    console.warn(`[AI-Vision] Direct JSON.parse failed (${jsonErr.message}), attempting regex extraction from raw output.`);
+                    const jsonMatch = content.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        parsed = JSON.parse(jsonMatch[0]);
+                    }
+                    else {
+                        throw new Error(`Vision model response was not valid JSON (${jsonErr.message}). Raw model output: ${content.slice(0, 300)}`);
+                    }
+                }
                 console.log(`[AI-Vision] ✅ Vision analysis successful using provider "${option.provider}". Detected: "${parsed.questionDetected}"`);
-                return parsed;
+                return {
+                    ...parsed,
+                    _rawModelResponse: content,
+                    _savedDebugImage: savedImagePath,
+                    _debug: {
+                        provider: option.provider,
+                        attemptLogs
+                    }
+                };
             }
             catch (err) {
                 lastError = err;
+                attemptLogs.push({
+                    provider: option.provider,
+                    error: err?.message || String(err)
+                });
                 console.warn(`[AI-Vision] Provider "${option.provider}" failed:`, err?.message || err);
             }
         }
@@ -464,7 +527,13 @@ Output strictly valid JSON matching this schema:
         return {
             questionDetected: "Screen Analysis Unavailable",
             hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
-            codeSnippet: ""
+            codeSnippet: "",
+            _savedDebugImage: savedImagePath,
+            _rawError: lastError?.message || String(lastError),
+            _debug: {
+                attemptLogs,
+                lastError: lastError?.message || String(lastError)
+            }
         };
     }
     static async answerAssistantQuery(question, resumeText) {

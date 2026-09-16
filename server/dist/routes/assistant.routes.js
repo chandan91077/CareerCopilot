@@ -8,6 +8,9 @@ const multer_1 = __importDefault(require("multer"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const openai_service_1 = require("../services/openai.service");
 const models_1 = require("../models");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
 const upload = (0, multer_1.default)({
     storage: multer_1.default.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -27,6 +30,19 @@ router.post('/analyze-screen', auth_middleware_1.optionalAuthMiddleware, async (
     const { image, userInstruction } = req.body;
     const imageLen = image ? image.length : 0;
     console.log(`[ANALYZE-SCREEN] Incoming request. Body keys: [${Object.keys(req.body || {}).join(', ')}]. Image present: ${!!image}, type: ${typeof image}, length: ${imageLen} chars (~${Math.round((imageLen * 3) / 4)} bytes), instruction: "${userInstruction || 'none'}"`);
+    let savedDebugPath = '';
+    try {
+        const clean = (image || '').replace(/^data:image\/\w+;base64,/, '').trim();
+        if (clean && clean !== 'mock') {
+            const buffer = Buffer.from(clean, 'base64');
+            savedDebugPath = path_1.default.join(os_1.default.tmpdir(), `capture-debug-${Date.now()}.png`);
+            fs_1.default.writeFileSync(savedDebugPath, buffer);
+            console.log(`[ANALYZE-SCREEN] 💾 Saved debug screen capture (${buffer.length} bytes) to ${savedDebugPath}`);
+        }
+    }
+    catch (diskErr) {
+        console.warn('[ANALYZE-SCREEN] Could not write debug screenshot to disk:', diskErr?.message);
+    }
     try {
         // Retrieve user's latest parsed resume
         const userResume = await models_1.Resume.findOne({ user: req.user?.id }).sort({ createdAt: -1 });
@@ -48,15 +64,23 @@ router.post('/analyze-screen', auth_middleware_1.optionalAuthMiddleware, async (
                     throw new Error('Empty response');
             }
             catch (aiErr) {
-                // Graceful fallback if OpenAI vision fails
+                console.warn('[ANALYZE-SCREEN] OpenAIService.analyzeScreen threw:', aiErr?.message || aiErr);
                 analysis = {
-                    questionDetected: 'Question detected on screen',
-                    hint: 'I detected content on your screen. For the best results, speak or type the interview question directly and I will generate a precise, resume-tailored answer for you.',
-                    codeSnippet: ''
+                    questionDetected: 'Screen Analysis Unavailable',
+                    hint: 'Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.',
+                    codeSnippet: '',
+                    _rawError: aiErr?.message || String(aiErr)
                 };
             }
         }
-        return res.json({ success: true, analysis });
+        return res.json({
+            success: true,
+            analysis,
+            savedDebugImage: savedDebugPath || analysis?._savedDebugImage || null,
+            debug: analysis?._debug || null,
+            rawModelResponse: analysis?._rawModelResponse || null,
+            rawError: analysis?._rawError || null
+        });
     }
     catch (error) {
         console.error('Analyze screen error:', error);
@@ -67,7 +91,9 @@ router.post('/analyze-screen', auth_middleware_1.optionalAuthMiddleware, async (
                 questionDetected: 'Screen analyzed',
                 hint: 'Ready to assist! Speak or type your interview question for a personalized AI answer.',
                 codeSnippet: ''
-            }
+            },
+            savedDebugImage: savedDebugPath || null,
+            error: error?.message || String(error)
         });
     }
 });

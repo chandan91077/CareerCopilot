@@ -1,5 +1,8 @@
 import OpenAI from 'openai';
 import { PromptConfig } from '../models';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 interface AIClientConfig {
   client: OpenAI;
@@ -78,7 +81,8 @@ const getOpenAIClient = (): AIClientConfig | null => {
 async function createChatCompletionWithFallback(
   ai: AIClientConfig,
   payload: any,
-  fallbackModels: string[] = GROQ_TEXT_FALLBACKS
+  fallbackModels: string[] = GROQ_TEXT_FALLBACKS,
+  attemptLogs?: any[]
 ) {
   let modelsToTry: string[];
   const isGroq = ai.client.baseURL?.includes('groq.com');
@@ -100,12 +104,28 @@ async function createChatCompletionWithFallback(
       console.log(`[AI-Fallback] Attempting model: ${modelName}`);
       const res = await ai.client.chat.completions.create({ ...payload, model: modelName });
       console.log(`[AI-Fallback] ✅ Success with model: ${modelName}`);
+      if (attemptLogs) {
+        attemptLogs.push({
+          model: modelName,
+          status: 'success',
+          rawOutput: res.choices[0]?.message?.content
+        });
+      }
       return res;
     } catch (err: any) {
       lastError = err;
       const status = err?.status || err?.statusCode || 'unknown';
       const msg = err?.message || String(err);
       console.warn(`[AI-Fallback] ❌ Model "${modelName}" failed (status: ${status}, message: ${msg}). Falling back to next model...`);
+      if (attemptLogs) {
+        attemptLogs.push({
+          model: modelName,
+          status: 'failed',
+          statusCode: status,
+          errorMessage: msg,
+          errorBody: err?.error || err?.response?.data || null
+        });
+      }
     }
   }
 
@@ -209,21 +229,21 @@ function getVisionClientOptions(): VisionClientOption[] {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
 
-  // Priority 1: OpenAI (gpt-4o flagship provides highest accuracy for code OCR, geometry, dense text & math)
+  // Priority 1: OpenAI (gpt-4o flagship, with gpt-4o-mini as immediate reliable fallback)
   if (openaiKey && openaiKey.length > 0) {
     options.push({
       provider: 'openai',
       client: new OpenAI({ apiKey: openaiKey }),
-      models: ['gpt-4o', 'gpt-4o-2024-08-06', 'chatgpt-4o-latest', 'gpt-4o-mini']
+      models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-08-06']
     });
   }
 
-  // Priority 2: Groq Vision (prioritize 90b over 11b for high accuracy)
+  // Priority 2: Groq Vision (fallback)
   if (groqKey && groqKey.length > 0) {
     options.push({
       provider: 'groq',
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      models: ['llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview']
+      models: ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
     });
   }
 
@@ -411,12 +431,25 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
     const imageByteLength = Math.round((cleanBase64.length * 3) / 4);
     console.log(`[AI-Vision] Analyzing screen capture: ${cleanBase64.length} base64 chars (~${imageByteLength} bytes). Instruction: "${userInstruction || 'none'}"`);
 
+    // Save screenshot to disk on every capture attempt for debugging/verification
+    let savedImagePath = '';
+    try {
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const filename = `capture-debug-${Date.now()}.png`;
+      savedImagePath = path.join(os.tmpdir(), filename);
+      fs.writeFileSync(savedImagePath, buffer);
+      console.log(`[AI-Vision] 💾 Saved capture image (${buffer.length} bytes) to disk: ${savedImagePath}`);
+    } catch (saveErr: any) {
+      console.warn('[AI-Vision] Failed to save debug image to disk:', saveErr?.message);
+    }
+
     if (!cleanBase64 || imageByteLength < 1000) {
       console.warn('[AI-Vision] ⚠️ Screenshot payload is empty or too small, skipping vision request.');
       return {
         questionDetected: "Screen Unclear",
         hint: "The captured screenshot was empty or unreadable. Please ensure your window is visible and press Capture again.",
-        codeSnippet: ""
+        codeSnippet: "",
+        _savedDebugImage: savedImagePath
       };
     }
 
@@ -484,6 +517,7 @@ Output strictly valid JSON matching this schema:
     console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Dispatching high-accuracy vision analysis. detail=high, max_tokens=4096. Providers available: ${visionOptions.map(o => o.provider).join(', ')}`);
 
     let lastError: any;
+    const attemptLogs: any[] = [];
 
     // Cross-provider fallback: try OpenAI (gpt-4o) first, fallback to Groq Vision if needed
     for (const option of visionOptions) {
@@ -502,15 +536,46 @@ Output strictly valid JSON matching this schema:
             response_format: { type: 'json_object' },
             max_tokens: 4096
           },
-          option.models
+          option.models,
+          attemptLogs
         );
 
         const content = response.choices[0]?.message?.content || '{}';
-        const parsed = JSON.parse(content);
+        console.log(`[AI-Vision] 📄 RAW MODEL RESPONSE from provider "${option.provider}":\n`, content);
+
+        let parsed: any;
+        try {
+          let cleanContent = content.trim();
+          if (cleanContent.startsWith('```')) {
+            cleanContent = cleanContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+          }
+          parsed = JSON.parse(cleanContent);
+        } catch (jsonErr: any) {
+          console.warn(`[AI-Vision] Direct JSON.parse failed (${jsonErr.message}), attempting regex extraction from raw output.`);
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error(`Vision model response was not valid JSON (${jsonErr.message}). Raw model output: ${content.slice(0, 300)}`);
+          }
+        }
+
         console.log(`[AI-Vision] ✅ Vision analysis successful using provider "${option.provider}". Detected: "${parsed.questionDetected}"`);
-        return parsed;
+        return {
+          ...parsed,
+          _rawModelResponse: content,
+          _savedDebugImage: savedImagePath,
+          _debug: {
+            provider: option.provider,
+            attemptLogs
+          }
+        };
       } catch (err: any) {
         lastError = err;
+        attemptLogs.push({
+          provider: option.provider,
+          error: err?.message || String(err)
+        });
         console.warn(`[AI-Vision] Provider "${option.provider}" failed:`, err?.message || err);
       }
     }
@@ -519,7 +584,13 @@ Output strictly valid JSON matching this schema:
     return {
       questionDetected: "Screen Analysis Unavailable",
       hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
-      codeSnippet: ""
+      codeSnippet: "",
+      _savedDebugImage: savedImagePath,
+      _rawError: lastError?.message || String(lastError),
+      _debug: {
+        attemptLogs,
+        lastError: lastError?.message || String(lastError)
+      }
     };
   }
 
