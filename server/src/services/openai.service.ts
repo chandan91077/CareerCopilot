@@ -80,14 +80,19 @@ async function createChatCompletionWithFallback(
   payload: any,
   fallbackModels: string[] = GROQ_TEXT_FALLBACKS
 ) {
-  let activeFallbacks = fallbackModels;
+  let modelsToTry: string[];
   const isGroq = ai.client.baseURL?.includes('groq.com');
 
-  if (isGroq) {
-    activeFallbacks = await getActiveGroqModels(ai);
+  if (fallbackModels !== GROQ_TEXT_FALLBACKS) {
+    // Caller passed an explicit model list (e.g., vision models) — preserve caller's list and priority order
+    modelsToTry = Array.from(new Set(fallbackModels));
+  } else {
+    let activeFallbacks = fallbackModels;
+    if (isGroq) {
+      activeFallbacks = await getActiveGroqModels(ai);
+    }
+    modelsToTry = Array.from(new Set([ai.model, ...activeFallbacks]));
   }
-
-  const modelsToTry = Array.from(new Set([ai.model, ...activeFallbacks]));
 
   let lastError: any;
   for (const modelName of modelsToTry) {
@@ -105,7 +110,7 @@ async function createChatCompletionWithFallback(
   }
 
   console.error('[AI-Fallback] ❌ All fallback models failed! Last raw error:', lastError?.message || lastError);
-  throw new Error('AI service temporarily unavailable — all fallback models failed.');
+  throw new Error(`AI service temporarily unavailable — all fallback models failed (${lastError?.message || 'unknown'}).`);
 }
 
 // Fallback Mock Responses for development if API key is not present or fails
@@ -191,6 +196,38 @@ async function getSystemPrompt(key: keyof typeof DEFAULT_PROMPTS): Promise<strin
     // Ignore and fallback
   }
   return DEFAULT_PROMPTS[key];
+}
+
+interface VisionClientOption {
+  provider: 'openai' | 'groq';
+  client: OpenAI;
+  models: string[];
+}
+
+function getVisionClientOptions(): VisionClientOption[] {
+  const options: VisionClientOption[] = [];
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
+
+  // Priority 1: OpenAI (gpt-4o flagship provides highest accuracy for code OCR, geometry, dense text & math)
+  if (openaiKey && openaiKey.length > 0) {
+    options.push({
+      provider: 'openai',
+      client: new OpenAI({ apiKey: openaiKey }),
+      models: ['gpt-4o', 'gpt-4o-2024-08-06', 'chatgpt-4o-latest', 'gpt-4o-mini']
+    });
+  }
+
+  // Priority 2: Groq Vision (prioritize 90b over 11b for high accuracy)
+  if (groqKey && groqKey.length > 0) {
+    options.push({
+      provider: 'groq',
+      client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
+      models: ['llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview']
+    });
+  }
+
+  return options;
 }
 
 export class OpenAIService {
@@ -360,11 +397,12 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
   }
 
   static async analyzeScreen(base64Image: string, resumeText: string, userInstruction?: string) {
-    const ai = getOpenAIClient();
-    if (!ai) {
+    const visionOptions = getVisionClientOptions();
+    if (visionOptions.length === 0) {
+      console.warn('[AI-Vision] No valid OPENAI_API_KEY or GROQ_API_KEY found, returning fallback coaching hint.');
       return {
         questionDetected: "Screen Captured",
-        hint: "Screen captured. Be sure to mention stateless API servers, load balancing, database replication, and fallback caching matching your technical experience.",
+        hint: "Screen captured. For personalized interview answers, configure OPENAI_API_KEY (recommended: gpt-4o) or GROQ_API_KEY in server/.env.",
         codeSnippet: ""
       };
     }
@@ -386,84 +424,103 @@ Evaluate the user response against the STAR method for behavioral answers. Highl
       ? `USER TYPED INSTRUCTION: "${userInstruction.trim()}"`
       : 'No specific instruction typed. Provide the full solution and analysis for the exact problem visible on screen.';
 
-    // Strictly vision-capable models (DO NOT include text-only models like llama-3.3-70b-versatile)
-    const visionFallbackModels = ai.client.baseURL?.includes('groq.com')
-      ? ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
-      : ['gpt-4o-mini', 'gpt-4o'];
+    const systemPrompt = `You are a Principal Technical Interviewer and elite Competitive Programmer analyzing a live, high-resolution screen capture image.
 
-    const messages: any[] = [
-      {
-        role: 'system',
-        content: `You are an expert real-time technical interview companion analyzing a live screen capture image.
+MANDATORY ACCURACY & OCR PROTOCOL:
+1. READ ALL VISIBLE TEXT IN THE SCREENSHOT EXACTLY:
+   - Carefully transcribe the exact problem title (e.g. "LeetCode 75. Sort Colors", "Two Sum"), problem statement, all constraints (e.g., 0 <= nums[i] <= 2, n <= 10^5), examples (Input, Output, Explanation), and any visible pre-existing code editor lines or function signatures.
+   - NEVER substitute, guess, or switch to a generic question (e.g., do NOT answer "second largest element" if the screen shows "Sort Colors"). Rely 100% on the visible pixels.
 
-MANDATORY VISION & PROBLEM IDENTIFICATION RULES:
-1. READ VISIBLE SCREEN CAPTURE IMAGE CONTENT EXCLUSIVELY:
-   - Inspect the provided image carefully. Identify the EXACT problem title, description, constraints, and code editor content shown on screen (e.g., LeetCode "75. Sort Colors", "Two Sum", MCQ question, or system architecture diagram).
-   - DO NOT invent, substitute, or assume a different problem (such as "second largest element in an array") that is NOT shown in the image!
-   - If the image shows "Sort Colors" (sort an array of 0s, 1s, 2s in-place), you MUST solve Sort Colors using the Dutch National Flag algorithm.
+2. STRUCTURED RESPONSE BASED ON QUESTION TYPE:
+   A. CODING PROBLEM (LeetCode / HackerRank / Codeforces / Online Assessment):
+      - In "questionDetected": State the exact problem title and number visible on screen.
+      - In "hint": 
+        * Algorithm: State the optimal algorithm / approach (e.g., "Dutch National Flag algorithm (3-way partition)", "Two Pointers with Hash Map", "Monotonic Stack").
+        * Logic: Give step-by-step reasoning explaining HOW and WHY the algorithm works.
+        * Complexity: Explicitly state Time Complexity (e.g. O(N)) and Space Complexity (e.g. O(1) in-place auxiliary) with clear justification.
+      - In "codeSnippet": Output complete, clean, production-ready, bug-free code solving the exact problem. If the user specified a language in USER INSTRUCTION (e.g. Python, Java, C++, JavaScript), write in that language. Otherwise, default to Python 3 or Java. Include the exact function signature shown on screen.
+   
+   B. MULTIPLE CHOICE QUESTION (MCQ):
+      - In "questionDetected": Transcribe the exact question text.
+      - In "hint": 
+        * State the correct option clearly: "Correct Option: [Option Letter] - [Option Text]".
+        * Provide a 2-4 sentence explanation detailing why that option is correct and why the alternatives are incorrect.
+      - In "codeSnippet": Leave empty ("") unless the question specifically requires code.
 
-2. FOLLOW USER'S TYPED INSTRUCTION STRICTLY:
-   - If the user instruction requests code in a specific language (e.g. "code in java", "python solution"), output FULL WORKING CODE strictly in that requested language for the VISIBLE problem in the "codeSnippet" field!
-   - If the screenshot shows a Multiple Choice Question (MCQ), state the correct option with a 2-line explanation in "hint".
-   - If the screenshot shows a conceptual question or system design diagram, provide a direct, concise technical explanation in "hint".
+   C. CONCEPTUAL / ARCHITECTURE QUESTION:
+      - In "questionDetected": State the concept or system design topic.
+      - In "hint": Provide a direct, structured answer covering Definition, Core Architecture/Components, Key Trade-offs, and 3-4 bullet points tailored for an interview.
+      - In "codeSnippet": Include code only if relevant or requested.
 
-3. IF SCREEN IS UNREADABLE:
-   - If no text or problem is legible in the screenshot, set "questionDetected" to "Screen Unclear" and state in "hint" that the screenshot was not legible. Never guess a random problem.
+3. IF SCREEN IS LEGITIMATELY UNREADABLE:
+   - If the image contains zero legible text or content, set "questionDetected" to "Screen Unclear" and state what was observed. Never guess.
 
-Output strictly valid JSON matching this format:
+Output strictly valid JSON matching this schema:
 {
-  "questionDetected": "Exact problem name or topic visible on screen",
-  "hint": "Step-by-step logic, optimal approach, Time/Space Complexity O(...), or MCQ answer",
-  "codeSnippet": "Complete working solution code for the VISIBLE problem in requested language"
-}`
+  "questionDetected": "Exact problem name or question visible on screen",
+  "hint": "Optimal algorithm, step-by-step logic, Time/Space Complexity O(...), or MCQ correct option with justification",
+  "codeSnippet": "Complete working solution code for the VISIBLE problem, or empty string if not a coding problem"
+}`;
+
+    const userContent: any[] = [
+      {
+        type: 'text',
+        text: `${instructionPrompt}\n\n[Candidate Resume Context for style/background]:\n${resumeText ? resumeText.slice(0, 1000) : 'Standard software engineering profile'}`
       },
       {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `Candidate's Resume:\n${resumeText}\n\n${instructionPrompt}`
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:image/png;base64,${cleanBase64}`
-            }
-          }
-        ]
+        type: 'image_url',
+        image_url: {
+          url: `data:image/png;base64,${cleanBase64}`,
+          detail: 'high' // Instructs vision model to inspect full-resolution 512x512 tiles for crisp code & text OCR
+        }
       }
     ];
 
-    console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Final vision payload structure sent to AI:`, JSON.stringify({
-      targetModels: visionFallbackModels,
-      messageCount: messages.length,
-      messagesSummary: messages.map(m => ({
-        role: m.role,
-        isContentArray: Array.isArray(m.content),
-        contentTypes: Array.isArray(m.content) ? m.content.map((c: any) => c.type) : 'text_string',
-        hasImageUrl: Array.isArray(m.content) ? m.content.some((c: any) => c.type === 'image_url') : false,
-        imagePrefix: Array.isArray(m.content) ? m.content.find((c: any) => c.type === 'image_url')?.image_url?.url?.slice(0, 30) + '...' : null
-      }))
-    }, null, 2));
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent }
+    ];
 
-    try {
-      const response = await createChatCompletionWithFallback(ai, {
-        messages,
-        response_format: { type: 'json_object' }
-      }, visionFallbackModels);
+    console.log(`[SERVER-VISION-AI-PAYLOAD] 🚀 Dispatching high-accuracy vision analysis. detail=high, max_tokens=4096. Providers available: ${visionOptions.map(o => o.provider).join(', ')}`);
 
-      const content = response.choices[0].message.content || '{}';
-      const parsed = JSON.parse(content);
-      console.log(`[AI-Vision] ✅ Vision analysis successful. Detected: "${parsed.questionDetected}"`);
-      return parsed;
-    } catch (err: any) {
-      console.warn('[OpenAIService.analyzeScreen] AI vision error, returning clear fallback:', err?.message || err);
-      return {
-        questionDetected: "Screen Analysis Unavailable",
-        hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
-        codeSnippet: ""
-      };
+    let lastError: any;
+
+    // Cross-provider fallback: try OpenAI (gpt-4o) first, fallback to Groq Vision if needed
+    for (const option of visionOptions) {
+      console.log(`[AI-Vision] Attempting vision provider "${option.provider}" with models: ${option.models.join(', ')}`);
+      try {
+        const dummyConfig: AIClientConfig = {
+          client: option.client,
+          model: option.models[0],
+          visionModel: option.models[0]
+        };
+
+        const response = await createChatCompletionWithFallback(
+          dummyConfig,
+          {
+            messages,
+            response_format: { type: 'json_object' },
+            max_tokens: 4096
+          },
+          option.models
+        );
+
+        const content = response.choices[0]?.message?.content || '{}';
+        const parsed = JSON.parse(content);
+        console.log(`[AI-Vision] ✅ Vision analysis successful using provider "${option.provider}". Detected: "${parsed.questionDetected}"`);
+        return parsed;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[AI-Vision] Provider "${option.provider}" failed:`, err?.message || err);
+      }
     }
+
+    console.warn('[OpenAIService.analyzeScreen] All vision providers failed, returning graceful fallback:', lastError?.message || lastError);
+    return {
+      questionDetected: "Screen Analysis Unavailable",
+      hint: "Could not read the screen content clearly with the Vision AI model. Please make sure your problem window is fully visible on screen and try capturing again.",
+      codeSnippet: ""
+    };
   }
 
   static async answerAssistantQuery(question: string, resumeText: string) {

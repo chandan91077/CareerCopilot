@@ -9,6 +9,7 @@ let tray;
 let localPort;
 let localServer;
 let isQuitting = false;
+let isManuallyHidden = false;
 
 // ─── Persistent Lifecycle & Heartbeat Logging ───────────────────────
 const lifecycleLogDir = app.getPath('userData');
@@ -56,6 +57,7 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine) => {
     writeLifecycleLog('INFO', '[APP] Second instance detected. Restoring and focusing primary overlay.', { commandLine });
     if (mainWindow && !mainWindow.isDestroyed()) {
+      isManuallyHidden = false;
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       if (typeof reassertAlwaysOnTopAndWorkspace === 'function') {
@@ -257,11 +259,20 @@ async function captureActiveScreenBase64() {
   }
 
   if (sources && sources.length > 0) {
-    const pngBuffer = sources[0].thumbnail.toPNG();
+    let matchedSource = sources[0];
+    if (targetDisplay && sources.length > 1) {
+      const found = sources.find(s => {
+        if (s.display_id && String(s.display_id) === String(targetDisplay.id)) return true;
+        const parts = s.id.split(':');
+        return parts.length >= 2 && String(parts[1]) === String(targetDisplay.id);
+      });
+      if (found) matchedSource = found;
+    }
+    const pngBuffer = matchedSource.thumbnail.toPNG();
     try {
       const debugPath = path.join(app.getPath('temp'), 'last-capture-debug.png');
       fs.writeFileSync(debugPath, pngBuffer);
-      console.log('[CAPTURE DEBUG] Saved fresh screen capture (' + pngBuffer.length + ' bytes) to:', debugPath);
+      console.log('[CAPTURE DEBUG] Saved fresh screen capture (' + pngBuffer.length + ' bytes) for display ' + (targetDisplay?.id || 'primary') + ' to:', debugPath);
     } catch (e) {
       console.warn('[CAPTURE DEBUG] Could not write debug image file:', e.message);
     }
@@ -346,7 +357,7 @@ function applyWin32ContentProtection(win) {
 // ─── Re-assert Always-on-Top and Virtual Desktop Pinning ────────────
 function reassertAlwaysOnTopAndWorkspace(win, reason = 'unknown') {
   // Never reassert or show a window that is destroyed or deliberately hidden
-  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  if (isManuallyHidden || !win || win.isDestroyed() || !win.isVisible()) return;
 
   try {
     // 1. Electron level: Set to 'screen-saver' (highest Z-order level) with relative level 1
@@ -436,12 +447,12 @@ function createWindow() {
 
     // Heartbeat timer every 2500ms:
     // 1. Logs liveness & state to careercopilot-lifecycle.log
-    // 2. Re-asserts topmost and virtual workspace
+    // 2. Re-asserts topmost and virtual workspace (ONLY if not manually hidden)
     setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         const memMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-        writeLifecycleLog('HEARTBEAT', `PID: ${process.pid} | Mem: ${memMb}MB | Visible: ${mainWindow.isVisible()} | Minimized: ${mainWindow.isMinimized()} | Focused: ${mainWindow.isFocused()} | Bounds: ${JSON.stringify(mainWindow.getBounds())}`);
-        if (mainWindow.isVisible()) {
+        writeLifecycleLog('HEARTBEAT', `PID: ${process.pid} | Mem: ${memMb}MB | Visible: ${mainWindow.isVisible()} | ManuallyHidden: ${isManuallyHidden} | Minimized: ${mainWindow.isMinimized()} | Focused: ${mainWindow.isFocused()} | Bounds: ${JSON.stringify(mainWindow.getBounds())}`);
+        if (!isManuallyHidden && mainWindow.isVisible()) {
           reassertAlwaysOnTopAndWorkspace(mainWindow, 'heartbeat-interval');
         }
       }
@@ -450,25 +461,36 @@ function createWindow() {
 
   // ── Window Focus & Blur Listeners ──────────────────────────
   mainWindow.on('blur', () => {
-    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+    if (isManuallyHidden || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     writeLifecycleLog('INFO', '[WINDOW] blur: another app took focus. Re-asserting topmost and workspace.');
     // Reclaim top position immediately without stealing focus from the newly active window
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-blur');
   });
 
   mainWindow.on('focus', () => {
+    if (isManuallyHidden) {
+      // Overlay was manually hidden via Ctrl+/; suppress any accidental focus-induced reveal
+      writeLifecycleLog('INFO', '[WINDOW] focus event received while isManuallyHidden=true. Enforcing hidden state.');
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      return;
+    }
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     writeLifecycleLog('INFO', '[WINDOW] focus event received');
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-focus');
   });
 
   mainWindow.on('show', () => {
+    if (isManuallyHidden) {
+      writeLifecycleLog('WARN', '[WINDOW] show event intercepted while isManuallyHidden=true. Forcing immediate hide.');
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      return;
+    }
     writeLifecycleLog('INFO', '[WINDOW] show event received');
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-show');
   });
 
   mainWindow.on('hide', () => {
-    writeLifecycleLog('WARN', '[WINDOW] hide event received', { callStack: new Error().stack });
+    writeLifecycleLog('INFO', `[WINDOW] hide event received (isManuallyHidden=${isManuallyHidden})`);
   });
 
   mainWindow.on('minimize', () => {
@@ -476,6 +498,10 @@ function createWindow() {
   });
 
   mainWindow.on('restore', () => {
+    if (isManuallyHidden) {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      return;
+    }
     writeLifecycleLog('INFO', '[WINDOW] restore event received');
     reassertAlwaysOnTopAndWorkspace(mainWindow, 'window-restore');
   });
@@ -502,16 +528,19 @@ function createWindow() {
     const stack = new Error().stack;
     writeLifecycleLog('WARN', '[WINDOW] close event received', {
       isQuitting,
+      isManuallyHidden,
       callStack: stack
     });
 
     if (!isQuitting) {
       event.preventDefault();
-      writeLifecycleLog('INFO', '[CLOSE-GUARD] Intercepted close signal while isQuitting=false. Preventing close and keeping overlay alive.');
-      if (!mainWindow.isVisible()) {
-        mainWindow.show();
+      writeLifecycleLog('INFO', '[CLOSE-GUARD] Intercepted close signal while isQuitting=false. Preventing close.');
+      if (!isManuallyHidden) {
+        if (!mainWindow.isVisible()) {
+          mainWindow.show();
+        }
+        reassertAlwaysOnTopAndWorkspace(mainWindow, 'close-prevented');
       }
-      reassertAlwaysOnTopAndWorkspace(mainWindow, 'close-prevented');
     } else {
       writeLifecycleLog('INFO', '[WINDOW] Close event permitted as isQuitting=true');
     }
@@ -535,11 +564,16 @@ function registerShortcuts() {
     lastToggleShortcutTime = now;
 
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
+    if (isManuallyHidden || !mainWindow.isVisible()) {
+      isManuallyHidden = false;
+      writeLifecycleLog('INFO', '[SHORTCUT] Ctrl+/ toggled: Unhiding overlay (isManuallyHidden=false).');
       mainWindow.show();
       mainWindow.focus();
+      reassertAlwaysOnTopAndWorkspace(mainWindow, 'manual-unhide');
+    } else {
+      isManuallyHidden = true;
+      writeLifecycleLog('INFO', '[SHORTCUT] Ctrl+/ toggled: Manually hiding overlay (isManuallyHidden=true).');
+      mainWindow.hide();
     }
   });
 
@@ -549,7 +583,7 @@ function registerShortcuts() {
     try {
       const base64Image = await captureActiveScreenBase64();
       mainWindow.webContents.send('screen-captured', base64Image);
-      if (!mainWindow.isVisible()) {
+      if (!isManuallyHidden && !mainWindow.isVisible()) {
         mainWindow.show();
       }
     } catch (err) {
@@ -611,9 +645,12 @@ app.whenReady().then(() => {
         {
           label: 'Show Assistant',
           click: () => {
-            if (mainWindow) {
+            isManuallyHidden = false;
+            writeLifecycleLog('INFO', '[TRAY] Show Assistant clicked: Clearing isManuallyHidden and showing overlay.');
+            if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
               mainWindow.focus();
+              reassertAlwaysOnTopAndWorkspace(mainWindow, 'tray-show');
             } else {
               createWindow();
             }
@@ -667,11 +704,15 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('hide-overlay', () => {
-    if (mainWindow) mainWindow.hide();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      isManuallyHidden = true;
+      writeLifecycleLog('INFO', '[IPC] hide-overlay invoked: Manually hiding overlay (isManuallyHidden=true).');
+      mainWindow.hide();
+    }
   });
 
   ipcMain.handle('set-opacity', (event, opacity) => {
-    if (mainWindow) {
+    if (mainWindow && !isManuallyHidden) {
       mainWindow.setOpacity(parseFloat(opacity));
     }
   });
