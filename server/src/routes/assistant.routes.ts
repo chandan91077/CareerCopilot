@@ -28,6 +28,23 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 
+// GET /assistant/groq-models - List live active models from Groq
+router.get('/groq-models', async (req: AuthRequest, res: Response) => {
+  try {
+    const groqKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
+    if (!groqKey) return res.json({ success: false, message: 'No GROQ_API_KEY found in server env' });
+    const client = new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' });
+    const list = await client.models.list();
+    return res.json({
+      success: true,
+      count: list.data.length,
+      models: list.data.map((m: any) => ({ id: m.id, active: m.active }))
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /assistant/analyze-screen - Analyze base64 image capture against user resume & optional typed instruction
 router.post('/analyze-screen', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const { image, userInstruction } = req.body;
