@@ -53,29 +53,65 @@ async function getActiveGroqModels(ai: AIClientConfig): Promise<string[]> {
   return GROQ_TEXT_FALLBACKS;
 }
 
-const getOpenAIClient = (): AIClientConfig | null => {
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (openaiKey && openaiKey.trim().length > 0) {
-    console.log('[AI-KEY-CHECK] ✅ OPENAI_API_KEY detected');
-    return {
+interface ProviderConfig {
+  provider: 'openai' | 'gemini' | 'groq';
+  client: OpenAI;
+  models: string[];
+}
+
+function getAllTextProviderConfigs(): ProviderConfig[] {
+  const configs: ProviderConfig[] = [];
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
+  const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
+
+  // Priority 1: OpenAI (Maximum accuracy with gpt-4o and gpt-4o-mini)
+  if (openaiKey && openaiKey.length > 0) {
+    configs.push({
+      provider: 'openai',
       client: new OpenAI({ apiKey: openaiKey }),
-      model: 'gpt-4o-mini',
-      visionModel: 'gpt-4o'
-    };
+      models: ['gpt-4o-mini', 'gpt-4o']
+    });
   }
 
-  const groqKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
-  if (groqKey && groqKey.trim().length > 0) {
-    console.log('[AI-KEY-CHECK] ✅ GROQ_API_KEY detected');
-    return {
+  // Priority 2: Gemini (High accuracy, fast, free tier via Google AI Studio OpenAI-compatible endpoint)
+  if (geminiKey && geminiKey.length > 0) {
+    configs.push({
+      provider: 'gemini',
+      client: new OpenAI({
+        apiKey: geminiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/'
+      }),
+      models: ['gemini-2.0-flash', 'gemini-1.5-flash']
+    });
+  }
+
+  // Priority 3: Groq (Fast open-source models as reliable fallback)
+  if (groqKey && groqKey.length > 0) {
+    configs.push({
+      provider: 'groq',
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      model: 'llama-3.3-70b-versatile',
-      visionModel: 'llama-3.2-11b-vision-preview'
-    };
+      models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', ...GROQ_TEXT_FALLBACKS]
+    });
   }
 
-  console.warn('[AI-KEY-CHECK] ⚠️ No valid OPENAI_API_KEY or GROQ_API_KEY found in process.env — falling back to deterministic mock service');
-  return null;
+  return configs;
+}
+
+const getOpenAIClient = (): AIClientConfig | null => {
+  const providers = getAllTextProviderConfigs();
+  if (providers.length === 0) {
+    console.warn('[AI-KEY-CHECK] ⚠️ No valid OPENAI_API_KEY, GEMINI_API_KEY or GROQ_API_KEY found in process.env — falling back to deterministic mock service');
+    return null;
+  }
+
+  const primary = providers[0];
+  console.log(`[AI-KEY-CHECK] ✅ Active primary AI provider: ${primary.provider.toUpperCase()} (${primary.models[0]})`);
+  return {
+    client: primary.client,
+    model: primary.models[0],
+    visionModel: primary.models[0]
+  };
 };
 
 async function createChatCompletionWithFallback(
@@ -99,6 +135,7 @@ async function createChatCompletionWithFallback(
   }
 
   let lastError: any;
+  // 1. Try models on current provider
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI-Fallback] Attempting model: ${modelName}`);
@@ -141,8 +178,54 @@ async function createChatCompletionWithFallback(
     }
   }
 
-  console.error('[AI-Fallback] ❌ All fallback models failed! Last raw error:', lastError?.message || lastError);
-  throw new Error(`AI service temporarily unavailable — all fallback models failed (${lastError?.message || 'unknown'}).`);
+  // 2. Cross-provider fallback: If primary provider completely failed, attempt remaining configured providers (OpenAI -> Gemini -> Groq)
+  const allProviders = getAllTextProviderConfigs();
+  const alternativeProviders = allProviders.filter(p => p.client.apiKey !== ai.client.apiKey);
+
+  for (const altProvider of alternativeProviders) {
+    console.warn(`[AI-Fallback] ⚠️ Switching to fallback provider "${altProvider.provider}"...`);
+    for (const modelName of altProvider.models) {
+      try {
+        console.log(`[AI-Fallback] Attempting fallback model: ${modelName} on ${altProvider.provider}`);
+        let res: any;
+        try {
+          res = await altProvider.client.chat.completions.create({ ...payload, model: modelName });
+        } catch (firstErr: any) {
+          if (payload.response_format && (firstErr?.status === 400 || firstErr?.statusCode === 400) &&
+              (firstErr?.message?.includes('response_format') || firstErr?.message?.includes('json_object'))) {
+            const { response_format, ...strippedPayload } = payload;
+            res = await altProvider.client.chat.completions.create({ ...strippedPayload, model: modelName });
+          } else {
+            throw firstErr;
+          }
+        }
+
+        console.log(`[AI-Fallback] ✅ Success with fallback provider "${altProvider.provider}", model: ${modelName}`);
+        if (attemptLogs) {
+          attemptLogs.push({
+            model: `${altProvider.provider}:${modelName}`,
+            status: 'success',
+            rawOutput: res.choices[0]?.message?.content
+          });
+        }
+        return res;
+      } catch (err: any) {
+        lastError = err;
+        const status = err?.status || err?.statusCode || 'unknown';
+        console.warn(`[AI-Fallback] ❌ Fallback model "${modelName}" on "${altProvider.provider}" failed (status: ${status}): ${err?.message || err}`);
+        if (attemptLogs) {
+          attemptLogs.push({
+            model: `${altProvider.provider}:${modelName}`,
+            status: 'failed',
+            errorMessage: err?.message || String(err)
+          });
+        }
+      }
+    }
+  }
+
+  console.error('[AI-Fallback] ❌ All providers and fallback models failed! Last raw error:', lastError?.message || lastError);
+  throw new Error(`AI service temporarily unavailable — all fallback providers failed (${lastError?.message || 'unknown'}).`);
 }
 
 // Fallback Mock Responses for development if API key is not present or fails
@@ -239,7 +322,7 @@ interface VisionClientOption {
 function getVisionClientOptions(): VisionClientOption[] {
   const options: VisionClientOption[] = [];
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
-  const geminiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBxwvAOhDBlXJfapl9wX3QTg_xYdQg5csI')?.trim();
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
   const groqKey = (process.env.GROQ_API_KEY || process.env.GROK_API_KEY)?.trim();
 
   // Priority 1: OpenAI (gpt-4o flagship, with gpt-4o-mini as immediate reliable fallback)
@@ -247,7 +330,7 @@ function getVisionClientOptions(): VisionClientOption[] {
     options.push({
       provider: 'openai',
       client: new OpenAI({ apiKey: openaiKey }),
-      models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-08-06']
+      models: ['gpt-4o', 'gpt-4o-mini']
     });
   }
 
@@ -259,7 +342,7 @@ function getVisionClientOptions(): VisionClientOption[] {
         apiKey: geminiKey,
         baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/'
       }),
-      models: ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
+      models: ['gemini-2.0-flash', 'gemini-1.5-flash']
     });
   }
 
@@ -268,7 +351,7 @@ function getVisionClientOptions(): VisionClientOption[] {
     options.push({
       provider: 'groq',
       client: new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' }),
-      models: ['qwen/qwen3.8-27b', 'groq/compound']
+      models: ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
     });
   }
 
@@ -630,7 +713,7 @@ Output strictly valid JSON matching this schema:
     const ai = getOpenAIClient();
 
     if (!ai) {
-      throw new Error('AI Service Unavailable: Neither GROQ_API_KEY nor OPENAI_API_KEY is configured in server/.env.');
+      throw new Error('AI Service Unavailable: No valid OPENAI_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY configured in server/.env.');
     }
 
     try {
